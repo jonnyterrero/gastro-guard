@@ -41,6 +41,12 @@ st.markdown("""
 if 'log_data' not in st.session_state:
     st.session_state.log_data = pd.DataFrame(columns=["Time", "Time_of_Ingestion", "Meal", "Pain Level", "Stress Level", "Remedy"])
 
+if 'remedy_effectiveness' not in st.session_state:
+    st.session_state.remedy_effectiveness = pd.DataFrame(columns=[
+        "Time", "Remedy", "Pain_Before", "Stress_Before", "Effectiveness_Rating", 
+        "Time_of_Day", "Hour", "Symptom_Level", "Remedy_Used_At"
+    ])
+
 if 'filtered_data' not in st.session_state:
     st.session_state.filtered_data = None
 
@@ -233,6 +239,121 @@ def analyze_pain_triggers_streamlit(data):
 
     return food_analysis, remedy_analysis
 
+def add_remedy_effectiveness(remedy, pain_before, stress_before, effectiveness_rating):
+    """Add remedy effectiveness data"""
+    current_time = datetime.now()
+    
+    # Calculate symptom level (average of pain and stress)
+    symptom_level = (pain_before + stress_before) / 2
+    
+    # Determine time of day
+    hour = current_time.hour
+    if 6 <= hour < 12:
+        time_of_day = "Morning"
+    elif 12 <= hour < 17:
+        time_of_day = "Afternoon"
+    elif 17 <= hour < 22:
+        time_of_day = "Evening"
+    else:
+        time_of_day = "Night"
+    
+    new_entry = {
+        "Time": current_time.strftime("%Y-%m-%d %H:%M:%S"),
+        "Remedy": remedy,
+        "Pain_Before": pain_before,
+        "Stress_Before": stress_before,
+        "Effectiveness_Rating": effectiveness_rating,
+        "Time_of_Day": time_of_day,
+        "Hour": hour,
+        "Symptom_Level": symptom_level,
+        "Remedy_Used_At": current_time.strftime("%Y-%m-%d %H:%M:%S")
+    }
+    
+    st.session_state.remedy_effectiveness = pd.concat([
+        st.session_state.remedy_effectiveness,
+        pd.DataFrame([new_entry])
+    ], ignore_index=True)
+    
+    return True
+
+def get_remedy_recommendations(current_pain, current_stress, current_hour=None):
+    """Get personalized remedy recommendations based on current symptoms and time"""
+    if st.session_state.remedy_effectiveness.empty:
+        return None, "No remedy data available yet. Start logging remedy effectiveness to get personalized recommendations."
+    
+    # Calculate current symptom level
+    current_symptom_level = (current_pain + current_stress) / 2
+    
+    # Determine current time of day if not provided
+    if current_hour is None:
+        current_hour = datetime.now().hour
+    
+    if 6 <= current_hour < 12:
+        current_time_of_day = "Morning"
+    elif 12 <= current_hour < 17:
+        current_time_of_day = "Afternoon"
+    elif 17 <= current_hour < 22:
+        current_time_of_day = "Evening"
+    else:
+        current_time_of_day = "Night"
+    
+    # Filter remedies by similar conditions
+    similar_conditions = st.session_state.remedy_effectiveness[
+        (st.session_state.remedy_effectiveness['Symptom_Level'] >= current_symptom_level - 2) &
+        (st.session_state.remedy_effectiveness['Symptom_Level'] <= current_symptom_level + 2) &
+        (st.session_state.remedy_effectiveness['Time_of_Day'] == current_time_of_day)
+    ]
+    
+    if similar_conditions.empty:
+        # Fallback to all remedies
+        similar_conditions = st.session_state.remedy_effectiveness
+    
+    # Calculate average effectiveness for each remedy
+    remedy_avg = similar_conditions.groupby('Remedy')['Effectiveness_Rating'].agg(['mean', 'count']).reset_index()
+    remedy_avg.columns = ['Remedy', 'Avg_Effectiveness', 'Usage_Count']
+    
+    # Sort by effectiveness (descending) and usage count (descending)
+    remedy_avg = remedy_avg.sort_values(['Avg_Effectiveness', 'Usage_Count'], ascending=[False, False])
+    
+    # Generate recommendation message
+    if not remedy_avg.empty:
+        best_remedy = remedy_avg.iloc[0]
+        recommendation_msg = f"Based on your current symptoms (Pain: {current_pain}/10, Stress: {current_stress}/10) and time of day ({current_time_of_day}), try: **{best_remedy['Remedy']}** (Average effectiveness: {best_remedy['Avg_Effectiveness']:.1f}/10, Used {best_remedy['Usage_Count']} times)"
+    else:
+        recommendation_msg = "No remedy data available for your current conditions."
+    
+    return remedy_avg, recommendation_msg
+
+def create_remedy_heatmap():
+    """Create heatmap of remedy effectiveness vs time of day vs symptom level"""
+    if st.session_state.remedy_effectiveness.empty:
+        return None
+    
+    # Create pivot table for heatmap
+    heatmap_data = st.session_state.remedy_effectiveness.pivot_table(
+        values='Effectiveness_Rating',
+        index='Time_of_Day',
+        columns='Remedy',
+        aggfunc='mean'
+    ).fillna(0)
+    
+    # Create heatmap
+    fig = px.imshow(
+        heatmap_data,
+        title="Remedy Effectiveness Heatmap: Time of Day vs Remedy",
+        labels=dict(x="Remedy", y="Time of Day", color="Average Effectiveness"),
+        color_continuous_scale="RdYlGn",
+        aspect="auto"
+    )
+    
+    fig.update_layout(
+        xaxis_title="Remedy",
+        yaxis_title="Time of Day",
+        height=400
+    )
+    
+    return fig
+
 def simulate_gastritis_streamlit(initial_severity, stress_level, food_irritation, time_hours=24):
     """Simulate gastritis progression for Streamlit"""
     
@@ -282,7 +403,7 @@ def main():
     st.sidebar.title("Navigation")
     page = st.sidebar.selectbox(
         "Choose a page",
-        ["📊 Dashboard", "📝 Log Entry", "📈 Analytics", "⏰ Timeline", "🔬 Pain Analysis", "🧪 Simulation", "📋 Data Export"]
+        ["📊 Dashboard", "📝 Log Entry", "📈 Analytics", "⏰ Timeline", "🔬 Pain Analysis", "💊 Remedy Tracker", "🧪 Simulation", "📋 Data Export"]
     )
 
     # Dashboard page
@@ -350,6 +471,27 @@ def main():
                 st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("No data available to display. Please log some entries first.")
+        
+        # Quick remedy recommendation
+        if not st.session_state.remedy_effectiveness.empty:
+            st.subheader("💡 Quick Remedy Recommendation")
+            
+            col1, col2 = st.columns([2, 1])
+            
+            with col1:
+                current_pain_quick = st.slider("Current Pain Level", 0, 10, 5, key="quick_pain")
+                current_stress_quick = st.slider("Current Stress Level", 0, 10, 5, key="quick_stress")
+            
+            with col2:
+                if st.button("Get Quick Recommendation", type="primary"):
+                    recommendations_quick, message_quick = get_remedy_recommendations(current_pain_quick, current_stress_quick)
+                    if recommendations_quick is not None and not recommendations_quick.empty:
+                        best_remedy_quick = recommendations_quick.iloc[0]
+                        st.success(f"**Try: {best_remedy_quick['Remedy']}**")
+                        st.write(f"Effectiveness: {best_remedy_quick['Avg_Effectiveness']:.1f}/10")
+                        st.write(f"Used {best_remedy_quick['Usage_Count']} times")
+                    else:
+                        st.info(message_quick)
 
     # Log Entry page
     elif page == "📝 Log Entry":
@@ -698,7 +840,119 @@ def main():
             elif data_to_analyze['Pain Level'].mean() > 4:
                 st.write("• **Monitor your diet more closely**")
             else:
-                st.write("• **Your pain levels are well managed**")
+                                 st.write("• **Your pain levels are well managed**")
+
+    # Remedy Tracker page
+    elif page == "💊 Remedy Tracker":
+        st.header("💊 Remedy Effectiveness Tracker")
+        st.write("Track and analyze the effectiveness of your remedies over time")
+
+        # Remedy effectiveness logging
+        st.subheader("📝 Log Remedy Effectiveness")
+        
+        with st.form("remedy_effectiveness_form"):
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("**Symptoms Before Remedy:**")
+                pain_before = st.slider("Pain Level Before (0-10)", 0, 10, 5, key="pain_before")
+                stress_before = st.slider("Stress Level Before (0-10)", 0, 10, 5, key="stress_before")
+            
+            with col2:
+                st.write("**Remedy Used:**")
+                remedy = st.text_input("Remedy Name (e.g., 'Chamomile Tea')", key="remedy_name")
+                effectiveness = st.slider("How Effective Was It? (0-10)", 0, 10, 5, 
+                                        help="0 = No effect, 10 = Completely resolved symptoms")
+            
+            submitted = st.form_submit_button("Log Remedy Effectiveness", type="primary")
+            
+            if submitted:
+                if remedy:
+                    success = add_remedy_effectiveness(remedy, pain_before, stress_before, effectiveness)
+                    if success:
+                        st.success("✅ Remedy effectiveness logged successfully!")
+                        st.balloons()
+                else:
+                    st.error("Please enter a remedy name.")
+
+        # Remedy recommendations
+        st.subheader("🎯 Personalized Remedy Recommendations")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.write("**Current Symptoms:**")
+            current_pain = st.slider("Current Pain Level (0-10)", 0, 10, 5, key="current_pain")
+            current_stress = st.slider("Current Stress Level (0-10)", 0, 10, 5, key="current_stress")
+        
+        with col2:
+            st.write("**Get Recommendation:**")
+            if st.button("Get Remedy Recommendation", type="secondary"):
+                recommendations, message = get_remedy_recommendations(current_pain, current_stress)
+                st.info(message)
+                
+                if recommendations is not None and not recommendations.empty:
+                    st.write("**Top Remedies for Your Current Condition:**")
+                    for i, (_, row) in enumerate(recommendations.head(3).iterrows(), 1):
+                        st.write(f"{i}. **{row['Remedy']}** - Effectiveness: {row['Avg_Effectiveness']:.1f}/10 (Used {row['Usage_Count']} times)")
+
+        # Remedy effectiveness analysis
+        if not st.session_state.remedy_effectiveness.empty:
+            st.subheader("📊 Remedy Effectiveness Analysis")
+            
+            # Bar chart of average effectiveness
+            st.write("**Average Effectiveness by Remedy:**")
+            remedy_avg = st.session_state.remedy_effectiveness.groupby('Remedy')['Effectiveness_Rating'].agg(['mean', 'count']).reset_index()
+            remedy_avg.columns = ['Remedy', 'Avg_Effectiveness', 'Usage_Count']
+            remedy_avg = remedy_avg.sort_values('Avg_Effectiveness', ascending=False)
+            
+            fig_bar = px.bar(
+                remedy_avg.head(10), 
+                x='Remedy', 
+                y='Avg_Effectiveness',
+                color='Usage_Count',
+                title="Average Effectiveness of Remedies",
+                labels={'Avg_Effectiveness': 'Average Effectiveness (0-10)', 'Usage_Count': 'Times Used'},
+                color_continuous_scale='Blues'
+            )
+            fig_bar.update_xaxes(tickangle=45)
+            st.plotly_chart(fig_bar, use_container_width=True)
+            
+            # Heatmap
+            st.write("**Remedy Effectiveness Heatmap:**")
+            heatmap_fig = create_remedy_heatmap()
+            if heatmap_fig:
+                st.plotly_chart(heatmap_fig, use_container_width=True)
+            
+            # Time-based analysis
+            st.subheader("⏰ Time-Based Remedy Analysis")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.write("**Effectiveness by Time of Day:**")
+                time_analysis = st.session_state.remedy_effectiveness.groupby('Time_of_Day')['Effectiveness_Rating'].mean().sort_values(ascending=False)
+                for time, effectiveness in time_analysis.items():
+                    st.write(f"• **{time}**: {effectiveness:.1f}/10 average effectiveness")
+            
+            with col2:
+                st.write("**Effectiveness by Symptom Level:**")
+                # Create symptom level bins
+                st.session_state.remedy_effectiveness['Symptom_Category'] = pd.cut(
+                    st.session_state.remedy_effectiveness['Symptom_Level'], 
+                    bins=[0, 3, 6, 10], 
+                    labels=['Low (0-3)', 'Medium (3-6)', 'High (6-10)']
+                )
+                symptom_analysis = st.session_state.remedy_effectiveness.groupby('Symptom_Category')['Effectiveness_Rating'].mean()
+                for category, effectiveness in symptom_analysis.items():
+                    st.write(f"• **{category}**: {effectiveness:.1f}/10 average effectiveness")
+            
+            # Detailed remedy data
+            st.subheader("📋 Remedy Effectiveness Data")
+            st.dataframe(st.session_state.remedy_effectiveness, use_container_width=True)
+            
+        else:
+            st.info("No remedy effectiveness data available yet. Start logging remedy effectiveness to see analysis.")
 
     # Simulation page
     elif page == "🧪 Simulation":
@@ -793,6 +1047,38 @@ def main():
                         file_name=f"gastroguard_analysis_{st.session_state.current_filter.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
                         mime="text/csv"
                     )
+        
+        # Remedy effectiveness export
+        if not st.session_state.remedy_effectiveness.empty:
+            st.subheader("💊 Export Remedy Effectiveness Data")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                csv_remedy = st.session_state.remedy_effectiveness.to_csv(index=False)
+                st.download_button(
+                    label="Download Remedy Data",
+                    data=csv_remedy,
+                    file_name=f"gastroguard_remedy_effectiveness_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv"
+                )
+            
+            with col2:
+                # Create remedy summary
+                remedy_summary = st.session_state.remedy_effectiveness.groupby('Remedy').agg({
+                    'Effectiveness_Rating': ['mean', 'count', 'std'],
+                    'Symptom_Level': 'mean'
+                }).round(2)
+                remedy_summary.columns = ['Avg_Effectiveness', 'Usage_Count', 'Std_Deviation', 'Avg_Symptom_Level']
+                remedy_summary = remedy_summary.reset_index()
+                
+                csv_summary = remedy_summary.to_csv(index=False)
+                st.download_button(
+                    label="Download Remedy Summary",
+                    data=csv_summary,
+                    file_name=f"gastroguard_remedy_summary_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv"
+                )
 
 if __name__ == "__main__":
     main()
