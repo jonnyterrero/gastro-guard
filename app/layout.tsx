@@ -1,6 +1,7 @@
 import type React from "react"
 import type { Metadata, Viewport } from "next"
 import { Work_Sans } from "next/font/google"
+import { Toaster } from "sonner"
 import "./globals.css"
 
 const workSans = Work_Sans({
@@ -101,6 +102,7 @@ export default function RootLayout({
       </head>
       <body className="font-sans antialiased">
         <div className="min-h-screen bg-background">{children}</div>
+        <Toaster position="bottom-center" richColors closeButton />
       </body>
     </html>
   )

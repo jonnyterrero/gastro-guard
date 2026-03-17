@@ -3,14 +3,12 @@ const CACHE_NAME = "gastroguard-v3.0"
 const STATIC_CACHE = "gastroguard-static-v3.0"
 const DYNAMIC_CACHE = "gastroguard-dynamic-v3.0"
 
-// Files to cache immediately
+// Files to cache immediately - only use valid URLs (directory paths cause install failure)
 const urlsToCache = [
   "/",
   "/manifest.json",
   "/icon-192x192.png",
   "/icon-512x512.png",
-  "/_next/static/css/",
-  "/_next/static/js/",
 ]
 
 // Install event - cache static assets

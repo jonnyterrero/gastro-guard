@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import { toast } from "sonner"
 import {
   Activity,
   ArrowLeft,
@@ -17,6 +18,7 @@ import {
   RefreshCw,
   Trash2,
   Zap,
+  Download,
 } from "lucide-react"
 
 interface LogEntry {
@@ -28,6 +30,7 @@ interface LogEntry {
   symptoms: string[]
   triggers: string[]
   remedies: string[]
+  remedyEffectiveness?: number
   notes: string
   mealSize?: string
   timeSinceEating?: number
@@ -80,6 +83,13 @@ export default function GastroGuardApp() {
 
   const [integrations, setIntegrations] = useState<Integration[]>([])
   const [showApiKey, setShowApiKey] = useState<string | null>(null)
+  const [confirmModal, setConfirmModal] = useState<{
+    open: boolean
+    title: string
+    message: string
+    onConfirm: () => void
+  } | null>(null)
+  const [integrationModal, setIntegrationModal] = useState<{ open: boolean; name: string }>({ open: false, name: "" })
 
   const [simulationFood, setSimulationFood] = useState("")
   const [simulationMealSize, setSimulationMealSize] = useState("medium")
@@ -110,6 +120,7 @@ export default function GastroGuardApp() {
   const [selectedSymptoms, setSelectedSymptoms] = useState<string[]>([])
   const [selectedTriggers, setSelectedTriggers] = useState<string[]>([])
   const [selectedRemedies, setSelectedRemedies] = useState<string[]>([])
+  const [remedyEffectiveness, setRemedyEffectiveness] = useState<number>(0)
   const [notes, setNotes] = useState("")
   const [mealSize, setMealSize] = useState("")
   const [timeSinceEating, setTimeSinceEating] = useState(0)
@@ -205,6 +216,7 @@ export default function GastroGuardApp() {
       symptoms: selectedSymptoms,
       triggers: selectedTriggers,
       remedies: selectedRemedies,
+      remedyEffectiveness: selectedRemedies.length > 0 ? remedyEffectiveness : undefined,
       notes,
       mealSize,
       timeSinceEating,
@@ -224,6 +236,7 @@ export default function GastroGuardApp() {
     setSelectedSymptoms([])
     setSelectedTriggers([])
     setSelectedRemedies([])
+    setRemedyEffectiveness(0)
     setNotes("")
     setMealSize("")
     setTimeSinceEating(0)
@@ -232,13 +245,13 @@ export default function GastroGuardApp() {
     setWeatherCondition("")
     setIngestionTime("")
 
-    alert("Entry saved successfully!")
+    toast.success("Entry saved successfully!")
     setCurrentView("dashboard")
   }
 
   const saveProfile = () => {
     localStorage.setItem("gastroguard-profile", JSON.stringify(userProfile))
-    alert("Profile updated successfully!")
+    toast.success("Profile updated successfully!")
   }
 
   const generateApiKey = () => {
@@ -251,9 +264,15 @@ export default function GastroGuardApp() {
   }
 
   const createIntegration = () => {
-    const name = prompt("Enter a name for this integration (e.g., 'My Fitness App', 'Meal Tracker'):")
-    if (!name) return
+    setIntegrationModal({ open: true, name: "" })
+  }
 
+  const confirmCreateIntegration = () => {
+    const name = integrationModal.name.trim()
+    if (!name) {
+      toast.error("Please enter a name for the integration")
+      return
+    }
     const newIntegration: Integration = {
       id: Date.now().toString(),
       name,
@@ -261,36 +280,130 @@ export default function GastroGuardApp() {
       createdAt: new Date().toISOString(),
       permissions: ["read:entries", "write:entries", "read:profile", "read:analytics"],
     }
-
     const updatedIntegrations = [...integrations, newIntegration]
     setIntegrations(updatedIntegrations)
     localStorage.setItem("gastroguard-integrations", JSON.stringify(updatedIntegrations))
-    alert(`Integration "${name}" created successfully!`)
+    setIntegrationModal({ open: false, name: "" })
+    toast.success(`Integration "${name}" created successfully!`)
   }
 
   const regenerateApiKey = (integrationId: string) => {
-    if (!confirm("Are you sure you want to regenerate this API key? The old key will stop working.")) return
-
-    const updatedIntegrations = integrations.map((integration) =>
-      integration.id === integrationId ? { ...integration, apiKey: generateApiKey() } : integration,
-    )
-    setIntegrations(updatedIntegrations)
-    localStorage.setItem("gastroguard-integrations", JSON.stringify(updatedIntegrations))
-    alert("API key regenerated successfully!")
+    setConfirmModal({
+      open: true,
+      title: "Regenerate API Key",
+      message: "The old key will stop working. Are you sure?",
+      onConfirm: () => {
+        const updatedIntegrations = integrations.map((integration) =>
+          integration.id === integrationId ? { ...integration, apiKey: generateApiKey() } : integration,
+        )
+        setIntegrations(updatedIntegrations)
+        localStorage.setItem("gastroguard-integrations", JSON.stringify(updatedIntegrations))
+        setConfirmModal(null)
+        toast.success("API key regenerated successfully!")
+      },
+    })
   }
 
   const deleteIntegration = (integrationId: string) => {
-    if (!confirm("Are you sure you want to delete this integration? This action cannot be undone.")) return
-
-    const updatedIntegrations = integrations.filter((integration) => integration.id !== integrationId)
-    setIntegrations(updatedIntegrations)
-    localStorage.setItem("gastroguard-integrations", JSON.stringify(updatedIntegrations))
-    alert("Integration deleted successfully!")
+    setConfirmModal({
+      open: true,
+      title: "Delete Integration",
+      message: "This action cannot be undone. Are you sure?",
+      onConfirm: () => {
+        const updatedIntegrations = integrations.filter((integration) => integration.id !== integrationId)
+        setIntegrations(updatedIntegrations)
+        localStorage.setItem("gastroguard-integrations", JSON.stringify(updatedIntegrations))
+        setConfirmModal(null)
+        toast.success("Integration deleted successfully!")
+      },
+    })
   }
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
-    alert("Copied to clipboard!")
+    toast.success("Copied to clipboard!")
+  }
+
+  const exportEntriesJSON = () => {
+    const data = {
+      exportedAt: new Date().toISOString(),
+      version: "1.0",
+      entries,
+    }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `gastroguard-entries-${new Date().toISOString().split("T")[0]}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success("Entries exported as JSON")
+  }
+
+  const exportEntriesCSV = () => {
+    const headers = [
+      "id",
+      "date",
+      "time",
+      "painLevel",
+      "stressLevel",
+      "symptoms",
+      "triggers",
+      "remedies",
+      "remedyEffectiveness",
+      "notes",
+      "mealSize",
+      "timeSinceEating",
+      "sleepQuality",
+      "exerciseLevel",
+      "weatherCondition",
+      "ingestionTime",
+    ]
+    const rows = entries.map((e) =>
+      [
+        e.id,
+        e.date,
+        e.time,
+        e.painLevel,
+        e.stressLevel,
+        e.symptoms.join(";"),
+        e.triggers.join(";"),
+        e.remedies.join(";"),
+        e.remedyEffectiveness ?? "",
+        (e.notes || "").replace(/"/g, '""'),
+        e.mealSize ?? "",
+        e.timeSinceEating ?? "",
+        e.sleepQuality ?? "",
+        e.exerciseLevel ?? "",
+        e.weatherCondition ?? "",
+        e.ingestionTime ?? "",
+      ].map((v) => `"${String(v)}"`).join(","),
+    )
+    const csv = [headers.join(","), ...rows].join("\n")
+    const blob = new Blob([csv], { type: "text/csv" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `gastroguard-entries-${new Date().toISOString().split("T")[0]}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success("Entries exported as CSV")
+  }
+
+  const exportProfile = () => {
+    const data = {
+      exportedAt: new Date().toISOString(),
+      version: "1.0",
+      profile: userProfile,
+    }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `gastroguard-profile-${new Date().toISOString().split("T")[0]}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    toast.success("Profile exported")
   }
 
   const getPersonalizedRecommendations = () => {
@@ -354,9 +467,26 @@ export default function GastroGuardApp() {
     return descriptions[level] || "Unknown"
   }
 
+  const getStressDescription = (level: number) => {
+    const descriptions = [
+      "No stress",
+      "Barely noticeable tension",
+      "Very mild stress, easily ignored",
+      "Mild stress, occasionally aware",
+      "Moderate stress, noticeable but manageable",
+      "Moderate stress, affects some focus",
+      "Significant stress, hard to ignore",
+      "High stress, dominates mood",
+      "Very high stress, difficult to function",
+      "Extreme stress, overwhelming",
+      "Overwhelming stress, seek support",
+    ]
+    return descriptions[level] || "Unknown"
+  }
+
   const runSimulation = () => {
     if (!simulationFood.trim()) {
-      alert("Please enter a food or meal to simulate")
+      toast.error("Please enter a food or meal to simulate")
       return
     }
 
@@ -542,6 +672,7 @@ export default function GastroGuardApp() {
                   <label className="text-sm font-medium block mb-2">
                     Current Stress Level: {currentStressLevel}/10
                   </label>
+                  <p className="text-xs text-gray-600 mb-2">{getStressDescription(currentStressLevel)}</p>
                   <input
                     type="range"
                     min="0"
@@ -646,6 +777,15 @@ export default function GastroGuardApp() {
                       {entry.symptoms.length > 0 && (
                         <p className="text-sm text-gray-600">Symptoms: {entry.symptoms.join(", ")}</p>
                       )}
+                      {entry.triggers.length > 0 && (
+                        <p className="text-sm text-gray-600">Triggers: {entry.triggers.join(", ")}</p>
+                      )}
+                      {entry.remedies.length > 0 && (
+                        <p className="text-sm text-gray-600">
+                          Remedies: {entry.remedies.join(", ")}
+                          {entry.remedyEffectiveness != null && ` (${entry.remedyEffectiveness}/10 effective)`}
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -684,6 +824,7 @@ export default function GastroGuardApp() {
                 {/* Stress Level */}
                 <div>
                   <label className="text-sm font-medium block mb-2">Stress Level: {stressLevel}/10</label>
+                  <p className="text-xs text-gray-600 mb-2">{getStressDescription(stressLevel)}</p>
                   <input
                     type="range"
                     min="0"
@@ -693,6 +834,82 @@ export default function GastroGuardApp() {
                     className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
                   />
                 </div>
+
+                {/* Triggers */}
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Possible Triggers</label>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {triggers.map((trigger) => (
+                      <button
+                        key={trigger}
+                        onClick={() => {
+                          if (selectedTriggers.includes(trigger)) {
+                            setSelectedTriggers(selectedTriggers.filter((t) => t !== trigger))
+                          } else {
+                            setSelectedTriggers([...selectedTriggers, trigger])
+                          }
+                        }}
+                        className={`p-2 text-xs rounded-lg border transition-all ${
+                          selectedTriggers.includes(trigger)
+                            ? "bg-amber-500 text-white border-amber-500"
+                            : "bg-white text-gray-700 border-gray-200 hover:border-amber-300"
+                        }`}
+                      >
+                        {trigger}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Remedies */}
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Remedies Used</label>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {remedies.map((remedy) => (
+                      <button
+                        key={remedy}
+                        onClick={() => {
+                          if (selectedRemedies.includes(remedy)) {
+                            setSelectedRemedies(selectedRemedies.filter((r) => r !== remedy))
+                          } else {
+                            setSelectedRemedies([...selectedRemedies, remedy])
+                          }
+                        }}
+                        className={`p-2 text-xs rounded-lg border transition-all ${
+                          selectedRemedies.includes(remedy)
+                            ? "bg-green-500 text-white border-green-500"
+                            : "bg-white text-gray-700 border-gray-200 hover:border-green-300"
+                        }`}
+                      >
+                        {remedy}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Remedy Effectiveness */}
+                {selectedRemedies.length > 0 && (
+                  <div>
+                    <label className="text-sm font-medium block mb-2">
+                      How effective were the remedies? {remedyEffectiveness}/10
+                    </label>
+                    <p className="text-xs text-gray-600 mb-2">
+                      {remedyEffectiveness === 0 && "Not rated"}
+                      {remedyEffectiveness >= 1 && remedyEffectiveness <= 3 && "Minimal relief"}
+                      {remedyEffectiveness >= 4 && remedyEffectiveness <= 6 && "Moderate relief"}
+                      {remedyEffectiveness >= 7 && remedyEffectiveness <= 9 && "Good relief"}
+                      {remedyEffectiveness === 10 && "Complete relief"}
+                    </p>
+                    <input
+                      type="range"
+                      min="0"
+                      max="10"
+                      value={remedyEffectiveness}
+                      onChange={(e) => setRemedyEffectiveness(Number(e.target.value))}
+                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                    />
+                  </div>
+                )}
 
                 {/* Symptoms */}
                 <div>
@@ -718,6 +935,22 @@ export default function GastroGuardApp() {
                       </button>
                     ))}
                   </div>
+                </div>
+
+                {/* Time Since Eating (optional, for timeline) */}
+                <div>
+                  <label className="text-sm font-medium block mb-2">Hours Since Eating (optional)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="24"
+                    step="0.5"
+                    value={timeSinceEating || ""}
+                    onChange={(e) => setTimeSinceEating(Number(e.target.value) || 0)}
+                    placeholder="Leave blank if unknown"
+                    className="w-full p-3 border border-gray-200 rounded-lg"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Used for pain timeline; omit if unknown</p>
                 </div>
 
                 {/* Notes */}
@@ -802,12 +1035,181 @@ export default function GastroGuardApp() {
                   </div>
                 </div>
 
+                {/* Conditions */}
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Known GI Conditions</label>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {conditions.map((condition) => (
+                      <button
+                        key={condition}
+                        onClick={() => {
+                          if (userProfile.conditions.includes(condition)) {
+                            setUserProfile({
+                              ...userProfile,
+                              conditions: userProfile.conditions.filter((c) => c !== condition),
+                            })
+                          } else {
+                            setUserProfile({
+                              ...userProfile,
+                              conditions: [...userProfile.conditions, condition],
+                            })
+                          }
+                        }}
+                        className={`p-2 text-xs rounded-lg border transition-all ${
+                          userProfile.conditions.includes(condition)
+                            ? "bg-blue-500 text-white border-blue-500"
+                            : "bg-white text-gray-700 border-gray-200 hover:border-blue-300"
+                        }`}
+                      >
+                        {condition}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Medications */}
+                <div>
+                  <label className="text-sm font-medium block mb-2">Current Medications</label>
+                  <input
+                    type="text"
+                    value={userProfile.medications.join(", ")}
+                    onChange={(e) =>
+                      setUserProfile({
+                        ...userProfile,
+                        medications: e.target.value
+                          .split(",")
+                          .map((m) => m.trim())
+                          .filter(Boolean),
+                      })
+                    }
+                    placeholder="e.g., Omeprazole, Pantoprazole (comma-separated)"
+                    className="w-full p-3 border border-gray-200 rounded-lg"
+                  />
+                </div>
+
+                {/* Allergies */}
+                <div>
+                  <label className="text-sm font-medium block mb-2">Allergies</label>
+                  <input
+                    type="text"
+                    value={userProfile.allergies.join(", ")}
+                    onChange={(e) =>
+                      setUserProfile({
+                        ...userProfile,
+                        allergies: e.target.value
+                          .split(",")
+                          .map((a) => a.trim())
+                          .filter(Boolean),
+                      })
+                    }
+                    placeholder="e.g., Penicillin, NSAIDs (comma-separated)"
+                    className="w-full p-3 border border-gray-200 rounded-lg"
+                  />
+                </div>
+
+                {/* Known Triggers */}
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Known Triggers</label>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {triggers.map((trigger) => (
+                      <button
+                        key={trigger}
+                        onClick={() => {
+                          if (userProfile.triggers.includes(trigger)) {
+                            setUserProfile({
+                              ...userProfile,
+                              triggers: userProfile.triggers.filter((t) => t !== trigger),
+                            })
+                          } else {
+                            setUserProfile({
+                              ...userProfile,
+                              triggers: [...userProfile.triggers, trigger],
+                            })
+                          }
+                        }}
+                        className={`p-2 text-xs rounded-lg border transition-all ${
+                          userProfile.triggers.includes(trigger)
+                            ? "bg-amber-500 text-white border-amber-500"
+                            : "bg-white text-gray-700 border-gray-200 hover:border-amber-300"
+                        }`}
+                      >
+                        {trigger}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Effective Remedies */}
+                <div>
+                  <label className="text-sm font-medium mb-2 block">Remedies That Work for You</label>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                    {remedies.map((remedy) => (
+                      <button
+                        key={remedy}
+                        onClick={() => {
+                          if (userProfile.effectiveRemedies.includes(remedy)) {
+                            setUserProfile({
+                              ...userProfile,
+                              effectiveRemedies: userProfile.effectiveRemedies.filter((r) => r !== remedy),
+                            })
+                          } else {
+                            setUserProfile({
+                              ...userProfile,
+                              effectiveRemedies: [...userProfile.effectiveRemedies, remedy],
+                            })
+                          }
+                        }}
+                        className={`p-2 text-xs rounded-lg border transition-all ${
+                          userProfile.effectiveRemedies.includes(remedy)
+                            ? "bg-green-500 text-white border-green-500"
+                            : "bg-white text-gray-700 border-gray-200 hover:border-green-300"
+                        }`}
+                      >
+                        {remedy}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 <button
                   onClick={saveProfile}
                   className="w-full p-3 bg-gradient-to-r from-green-500 to-emerald-500 text-white rounded-lg font-semibold hover:shadow-lg transform hover:scale-105 transition-all duration-200 flex items-center justify-center gap-2"
                 >
                   <Save className="w-5 h-5" />
                   Save Profile
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-white/80 backdrop-blur-sm border border-white/20 shadow-xl rounded-lg p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Download className="w-5 h-5 text-emerald-500" />
+                <h2 className="text-xl font-semibold">Export Data</h2>
+              </div>
+              <p className="text-gray-600 mb-4">
+                Download your data for backup or later Supabase migration. All exports use the current localStorage data.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={exportEntriesJSON}
+                  className="px-4 py-2 bg-blue-500 text-white rounded-lg text-sm font-medium hover:bg-blue-600 transition-colors flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  Export Entries (JSON)
+                </button>
+                <button
+                  onClick={exportEntriesCSV}
+                  className="px-4 py-2 bg-green-500 text-white rounded-lg text-sm font-medium hover:bg-green-600 transition-colors flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  Export Entries (CSV)
+                </button>
+                <button
+                  onClick={exportProfile}
+                  className="px-4 py-2 bg-emerald-500 text-white rounded-lg text-sm font-medium hover:bg-emerald-600 transition-colors flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  Export Profile (JSON)
                 </button>
               </div>
             </div>
@@ -1110,24 +1512,27 @@ export default function GastroGuardApp() {
                           )
                         })
 
-                        return relevantEntries.slice(0, 10).map((entry, index) => {
-                          const timeOffset = entry.timeSinceEating || Math.random() * 6
-                          const xPos = (timeOffset / 8) * 100
-                          const yPos = (entry.painLevel / 10) * 100
+                        return relevantEntries
+                          .filter((entry) => entry.timeSinceEating != null && entry.timeSinceEating >= 0)
+                          .slice(0, 10)
+                          .map((entry) => {
+                            const timeOffset = entry.timeSinceEating!
+                            const xPos = (timeOffset / 8) * 100
+                            const yPos = (entry.painLevel / 10) * 100
 
-                          return (
-                            <div
-                              key={entry.id}
-                              className="absolute w-3 h-3 bg-blue-500 rounded-full border-2 border-white shadow-lg"
-                              style={{
-                                left: `${xPos}%`,
-                                bottom: `${yPos}%`,
-                                transform: "translate(-50%, 50%)",
-                              }}
-                              title={`Pain: ${entry.painLevel}/10 at ${timeOffset.toFixed(1)}h`}
-                            />
-                          )
-                        })
+                            return (
+                              <div
+                                key={entry.id}
+                                className="absolute w-3 h-3 bg-blue-500 rounded-full border-2 border-white shadow-lg"
+                                style={{
+                                  left: `${xPos}%`,
+                                  bottom: `${yPos}%`,
+                                  transform: "translate(-50%, 50%)",
+                                }}
+                                title={`Pain: ${entry.painLevel}/10 at ${timeOffset}h`}
+                              />
+                            )
+                          })
                       })()}
 
                       {/* Predicted pain curve */}
@@ -1186,6 +1591,21 @@ export default function GastroGuardApp() {
                       <span>8h</span>
                     </div>
                   </div>
+
+                  {/* No historical time points message */}
+                  {entries
+                    .filter((e) => {
+                      const match =
+                        e.notes.toLowerCase().includes(simulationFood.toLowerCase()) ||
+                        e.triggers.some((t) => simulationFood.toLowerCase().includes(t.toLowerCase()))
+                      return match && e.timeSinceEating != null && e.timeSinceEating >= 0
+                    })
+                    .slice(0, 10).length === 0 && (
+                    <p className="text-sm text-amber-600 mb-4">
+                      No historical entries with &quot;Hours Since Eating&quot; for this food. Log entries with that
+                      field to see data points on the timeline.
+                    </p>
+                  )}
 
                   {/* Legend */}
                   <div className="flex flex-wrap gap-4 justify-center text-sm">
@@ -1254,6 +1674,68 @@ export default function GastroGuardApp() {
           </div>
         )}
       </div>
+
+      {/* Confirm Modal */}
+      {confirmModal?.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6">
+            <h3 className="text-lg font-semibold mb-2">{confirmModal.title}</h3>
+            <p className="text-gray-600 mb-6">{confirmModal.message}</p>
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setConfirmModal(null)}
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmModal.onConfirm}
+                className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Integration Name Modal */}
+      {integrationModal.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-6">
+            <h3 className="text-lg font-semibold mb-2">New Integration</h3>
+            <p className="text-gray-600 text-sm mb-4">
+              Enter a name (e.g., &quot;My Fitness App&quot;, &quot;Meal Tracker&quot;)
+            </p>
+            <input
+              type="text"
+              value={integrationModal.name}
+              onChange={(e) => setIntegrationModal({ ...integrationModal, name: e.target.value })}
+              placeholder="Integration name"
+              className="w-full p-3 border border-gray-200 rounded-lg mb-6"
+              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === "Enter") confirmCreateIntegration()
+                if (e.key === "Escape") setIntegrationModal({ open: false, name: "" })
+              }}
+            />
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setIntegrationModal({ open: false, name: "" })}
+                className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmCreateIntegration}
+                className="px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-sm border-t border-gray-200 px-4 py-2">
         <div className="flex justify-around items-center max-w-md mx-auto">
