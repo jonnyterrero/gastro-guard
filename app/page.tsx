@@ -19,26 +19,17 @@ import {
   Trash2,
   Zap,
   Download,
+  Lightbulb,
 } from "lucide-react"
-
-interface LogEntry {
-  id: string
-  date: string
-  time: string
-  painLevel: number
-  stressLevel: number
-  symptoms: string[]
-  triggers: string[]
-  remedies: string[]
-  remedyEffectiveness?: number
-  notes: string
-  mealSize?: string
-  timeSinceEating?: number
-  sleepQuality?: number
-  exerciseLevel?: number
-  weatherCondition?: string
-  ingestionTime?: string
-}
+import type { LogEntry } from "@/lib/types"
+import {
+  generateInsights,
+  getTopToleratedFoods,
+  getTopSuspectedTriggers,
+  getHelpfulMedications,
+  getUnhelpfulMedications,
+  getAverageSymptomDelay,
+} from "@/lib/insightEngine"
 
 interface UserProfile {
   name: string
@@ -143,6 +134,24 @@ export default function GastroGuardApp() {
   const [exerciseLevel, setExerciseLevel] = useState(0)
   const [weatherCondition, setWeatherCondition] = useState("")
   const [ingestionTime, setIngestionTime] = useState("")
+  // Digestive pattern insights fields
+  const [refluxSeverity, setRefluxSeverity] = useState(0)
+  const [nauseaSeverity, setNauseaSeverity] = useState(0)
+  const [bloatingSeverity, setBloatingSeverity] = useState(0)
+  const [fullnessSeverity, setFullnessSeverity] = useState(0)
+  const [burningLocation, setBurningLocation] = useState<"chest" | "throat" | "stomach" | "upper_abdomen" | "">("")
+  const [symptomStartDelayMin, setSymptomStartDelayMin] = useState<number | "">("")
+  const [symptomDurationMin, setSymptomDurationMin] = useState<number | "">("")
+  const [suspectedFoodsInput, setSuspectedFoodsInput] = useState("")
+  const [toleratedFoodsInput, setToleratedFoodsInput] = useState("")
+  const [medicationTakenInput, setMedicationTakenInput] = useState("")
+  const [medicationEffectivenessInput, setMedicationEffectivenessInput] = useState("")
+  const [bowelChangesInput, setBowelChangesInput] = useState("")
+  const [vomiting, setVomiting] = useState(false)
+  const [burping, setBurping] = useState(false)
+  const [regurgitation, setRegurgitation] = useState(false)
+  const [hydrationTolerance, setHydrationTolerance] = useState<"good" | "moderate" | "poor" | "">("")
+  const [reliefTimeMin, setReliefTimeMin] = useState<number | "">("")
 
   const symptoms = [
     "Stomach Pain",
@@ -219,6 +228,19 @@ export default function GastroGuardApp() {
   const saveEntry = () => {
     if (isSaving) return
 
+    const suspectedFoods = suspectedFoodsInput.split(",").map((s) => s.trim()).filter(Boolean)
+    const toleratedFoods = toleratedFoodsInput.split(",").map((s) => s.trim()).filter(Boolean)
+    const medicationTaken = medicationTakenInput.split(",").map((s) => s.trim()).filter(Boolean)
+    const medicationEffectiveness: Record<string, number> = {}
+    for (const part of medicationEffectivenessInput.split(",")) {
+      const [name, scoreStr] = part.split(":").map((s) => s.trim())
+      if (name && scoreStr) {
+        const score = Number.parseInt(scoreStr, 10)
+        if (!Number.isNaN(score) && score >= 0 && score <= 10) medicationEffectiveness[name] = score
+      }
+    }
+    const bowelChanges = bowelChangesInput.split(",").map((s) => s.trim()).filter(Boolean)
+
     const hasMeaningfulData =
       painLevel > 0 ||
       stressLevel > 0 ||
@@ -228,7 +250,17 @@ export default function GastroGuardApp() {
       notes.trim() !== "" ||
       mealSize !== "" ||
       timeSinceEating > 0 ||
-      ingestionTime !== ""
+      ingestionTime !== "" ||
+      refluxSeverity > 0 ||
+      nauseaSeverity > 0 ||
+      bloatingSeverity > 0 ||
+      fullnessSeverity > 0 ||
+      suspectedFoods.length > 0 ||
+      toleratedFoods.length > 0 ||
+      medicationTaken.length > 0 ||
+      vomiting ||
+      burping ||
+      regurgitation
 
     if (!hasMeaningfulData) {
       toast.error("Please log at least one meaningful symptom, meal, trigger, or remedy.")
@@ -255,6 +287,23 @@ export default function GastroGuardApp() {
         exerciseLevel,
         weatherCondition: weatherCondition || undefined,
         ingestionTime: ingestionTime || undefined,
+        refluxSeverity: refluxSeverity || undefined,
+        nauseaSeverity: nauseaSeverity || undefined,
+        bloatingSeverity: bloatingSeverity || undefined,
+        fullnessSeverity: fullnessSeverity || undefined,
+        burningLocation: burningLocation || undefined,
+        symptomStartDelayMin: typeof symptomStartDelayMin === "number" ? symptomStartDelayMin : undefined,
+        symptomDurationMin: typeof symptomDurationMin === "number" ? symptomDurationMin : undefined,
+        suspectedFoods: suspectedFoods.length > 0 ? suspectedFoods : undefined,
+        toleratedFoods: toleratedFoods.length > 0 ? toleratedFoods : undefined,
+        medicationTaken: medicationTaken.length > 0 ? medicationTaken : undefined,
+        medicationEffectiveness: Object.keys(medicationEffectiveness).length > 0 ? medicationEffectiveness : undefined,
+        bowelChanges: bowelChanges.length > 0 ? bowelChanges : undefined,
+        vomiting: vomiting || undefined,
+        burping: burping || undefined,
+        regurgitation: regurgitation || undefined,
+        hydrationTolerance: hydrationTolerance || undefined,
+        reliefTimeMin: typeof reliefTimeMin === "number" ? reliefTimeMin : undefined,
       }
 
       const updatedEntries = [...entries, newEntry]
@@ -274,6 +323,23 @@ export default function GastroGuardApp() {
       setExerciseLevel(0)
       setWeatherCondition("")
       setIngestionTime("")
+      setRefluxSeverity(0)
+      setNauseaSeverity(0)
+      setBloatingSeverity(0)
+      setFullnessSeverity(0)
+      setBurningLocation("")
+      setSymptomStartDelayMin("")
+      setSymptomDurationMin("")
+      setSuspectedFoodsInput("")
+      setToleratedFoodsInput("")
+      setMedicationTakenInput("")
+      setMedicationEffectivenessInput("")
+      setBowelChangesInput("")
+      setVomiting(false)
+      setBurping(false)
+      setRegurgitation(false)
+      setHydrationTolerance("")
+      setReliefTimeMin("")
 
       toast.success("Entry saved successfully!")
       setCurrentView("dashboard")
@@ -739,13 +805,19 @@ export default function GastroGuardApp() {
                 <span className="font-semibold">Smart Recommendations</span>
               </button>
 
-              {/* Added Simulation Button */}
               <button
                 onClick={() => setCurrentView("simulation")}
                 className="p-6 rounded-xl bg-gradient-to-r from-yellow-500 to-orange-500 text-white shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center justify-center gap-3"
               >
                 <Zap className="w-6 h-6" />
                 <span className="font-semibold">Symptom Simulator</span>
+              </button>
+              <button
+                onClick={() => setCurrentView("insights")}
+                className="p-6 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center justify-center gap-3"
+              >
+                <Lightbulb className="w-6 h-6" />
+                <span className="font-semibold">Pattern Insights</span>
               </button>
             </div>
 
@@ -839,223 +911,417 @@ export default function GastroGuardApp() {
                 <h2 className="text-xl font-semibold">Enhanced Symptom Log</h2>
               </div>
               <p className="text-gray-600 mb-6">
-                Comprehensive tracking with detailed pain scale and contextual factors
+                Comprehensive tracking for digestive pattern insights
               </p>
 
-              <div className="space-y-6">
-                {/* Pain Level with Enhanced Scale */}
+              <div className="space-y-8">
+                {/* Section: Symptoms */}
                 <div>
-                  <label className="text-sm font-medium block mb-2">Pain Level: {painLevel}/10</label>
-                  <p className="text-xs text-gray-600 mb-2">{getPainDescription(painLevel)}</p>
-                  <input
-                    type="range"
-                    min="0"
-                    max="10"
-                    value={painLevel}
-                    onChange={(e) => setPainLevel(Number(e.target.value))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                  />
-                </div>
-
-                {/* Stress Level */}
-                <div>
-                  <label className="text-sm font-medium block mb-2">Stress Level: {stressLevel}/10</label>
-                  <p className="text-xs text-gray-600 mb-2">{getStressDescription(stressLevel)}</p>
-                  <input
-                    type="range"
-                    min="0"
-                    max="10"
-                    value={stressLevel}
-                    onChange={(e) => setStressLevel(Number(e.target.value))}
-                    className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                  />
-                </div>
-
-                {/* Triggers */}
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Possible Triggers</label>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                    {triggers.map((trigger) => (
-                      <button
-                        key={trigger}
-                        onClick={() => {
-                          if (selectedTriggers.includes(trigger)) {
-                            setSelectedTriggers(selectedTriggers.filter((t) => t !== trigger))
-                          } else {
-                            setSelectedTriggers([...selectedTriggers, trigger])
-                          }
-                        }}
-                        className={`p-2 text-xs rounded-lg border transition-all ${
-                          selectedTriggers.includes(trigger)
-                            ? "bg-amber-500 text-white border-amber-500"
-                            : "bg-white text-gray-700 border-gray-200 hover:border-amber-300"
-                        }`}
+                  <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                    <Activity className="w-4 h-4" /> Symptoms
+                  </h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-sm font-medium block mb-2">Pain Level: {painLevel}/10</label>
+                      <p className="text-xs text-gray-600 mb-2">{getPainDescription(painLevel)}</p>
+                      <input
+                        type="range"
+                        min="0"
+                        max="10"
+                        value={painLevel}
+                        onChange={(e) => setPainLevel(Number(e.target.value))}
+                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium block mb-2">Reflux: {refluxSeverity}/10</label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="10"
+                          value={refluxSeverity}
+                          onChange={(e) => setRefluxSeverity(Number(e.target.value))}
+                          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium block mb-2">Nausea: {nauseaSeverity}/10</label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="10"
+                          value={nauseaSeverity}
+                          onChange={(e) => setNauseaSeverity(Number(e.target.value))}
+                          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium block mb-2">Bloating: {bloatingSeverity}/10</label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="10"
+                          value={bloatingSeverity}
+                          onChange={(e) => setBloatingSeverity(Number(e.target.value))}
+                          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium block mb-2">Fullness: {fullnessSeverity}/10</label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="10"
+                          value={fullnessSeverity}
+                          onChange={(e) => setFullnessSeverity(Number(e.target.value))}
+                          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium block mb-2">Burning Location</label>
+                      <select
+                        value={burningLocation}
+                        onChange={(e) => setBurningLocation(e.target.value as typeof burningLocation)}
+                        className="w-full p-3 border border-gray-200 rounded-lg"
                       >
-                        {trigger}
-                      </button>
-                    ))}
+                        <option value="">None / not applicable</option>
+                        <option value="chest">Chest</option>
+                        <option value="throat">Throat</option>
+                        <option value="stomach">Stomach</option>
+                        <option value="upper_abdomen">Upper abdomen</option>
+                      </select>
+                    </div>
+                    <div className="flex flex-wrap gap-4">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={vomiting}
+                          onChange={(e) => setVomiting(e.target.checked)}
+                          className="rounded"
+                        />
+                        <span className="text-sm">Vomiting</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={burping}
+                          onChange={(e) => setBurping(e.target.checked)}
+                          className="rounded"
+                        />
+                        <span className="text-sm">Burping</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={regurgitation}
+                          onChange={(e) => setRegurgitation(e.target.checked)}
+                          className="rounded"
+                        />
+                        <span className="text-sm">Regurgitation</span>
+                      </label>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Symptoms (select all that apply)</label>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        {symptoms.map((symptom) => (
+                          <button
+                            key={symptom}
+                            onClick={() => {
+                              if (selectedSymptoms.includes(symptom)) {
+                                setSelectedSymptoms(selectedSymptoms.filter((s) => s !== symptom))
+                              } else {
+                                setSelectedSymptoms([...selectedSymptoms, symptom])
+                              }
+                            }}
+                            className={`p-2 text-xs rounded-lg border transition-all ${
+                              selectedSymptoms.includes(symptom)
+                                ? "bg-blue-500 text-white border-blue-500"
+                                : "bg-white text-gray-700 border-gray-200 hover:border-blue-300"
+                            }`}
+                          >
+                            {symptom}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                {/* Remedies */}
+                {/* Section: Food & Digestion */}
                 <div>
-                  <label className="text-sm font-medium mb-2 block">Remedies Used</label>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                    {remedies.map((remedy) => (
-                      <button
-                        key={remedy}
-                        onClick={() => {
-                          if (selectedRemedies.includes(remedy)) {
-                            setSelectedRemedies(selectedRemedies.filter((r) => r !== remedy))
-                          } else {
-                            setSelectedRemedies([...selectedRemedies, remedy])
+                  <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                    <Heart className="w-4 h-4" /> Food & Digestion
+                  </h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-sm font-medium block mb-2">Suspected Foods (comma-separated)</label>
+                      <input
+                        type="text"
+                        value={suspectedFoodsInput}
+                        onChange={(e) => setSuspectedFoodsInput(e.target.value)}
+                        placeholder="e.g., Pizza, Coffee, Dairy"
+                        className="w-full p-3 border border-gray-200 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium block mb-2">Tolerated Foods (comma-separated)</label>
+                      <input
+                        type="text"
+                        value={toleratedFoodsInput}
+                        onChange={(e) => setToleratedFoodsInput(e.target.value)}
+                        placeholder="e.g., Rice, Banana, Toast"
+                        className="w-full p-3 border border-gray-200 rounded-lg"
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium block mb-2">Time of Ingestion</label>
+                        <input
+                          type="time"
+                          value={ingestionTime}
+                          onChange={(e) => setIngestionTime(e.target.value)}
+                          className="w-full p-3 border border-gray-200 rounded-lg"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium block mb-2">Meal Size</label>
+                        <select
+                          value={mealSize}
+                          onChange={(e) => setMealSize(e.target.value)}
+                          className="w-full p-3 border border-gray-200 rounded-lg"
+                        >
+                          <option value="">Select</option>
+                          <option value="small">Small</option>
+                          <option value="medium">Medium</option>
+                          <option value="large">Large</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium block mb-2">Hours Since Eating: {timeSinceEating}</label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="12"
+                          value={timeSinceEating}
+                          onChange={(e) => setTimeSinceEating(Number(e.target.value))}
+                          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium block mb-2">Symptom Start Delay (minutes)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="480"
+                          value={symptomStartDelayMin}
+                          onChange={(e) =>
+                            setSymptomStartDelayMin(e.target.value === "" ? "" : Number(e.target.value))
                           }
-                        }}
-                        className={`p-2 text-xs rounded-lg border transition-all ${
-                          selectedRemedies.includes(remedy)
-                            ? "bg-green-500 text-white border-green-500"
-                            : "bg-white text-gray-700 border-gray-200 hover:border-green-300"
-                        }`}
-                      >
-                        {remedy}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Remedy Effectiveness */}
-                {selectedRemedies.length > 0 && (
-                  <div>
-                    <label className="text-sm font-medium block mb-2">
-                      How effective were the remedies? {remedyEffectiveness}/10
-                    </label>
-                    <p className="text-xs text-gray-600 mb-2">
-                      {remedyEffectiveness === 0 && "Not rated"}
-                      {remedyEffectiveness >= 1 && remedyEffectiveness <= 3 && "Minimal relief"}
-                      {remedyEffectiveness >= 4 && remedyEffectiveness <= 6 && "Moderate relief"}
-                      {remedyEffectiveness >= 7 && remedyEffectiveness <= 9 && "Good relief"}
-                      {remedyEffectiveness === 10 && "Complete relief"}
-                    </p>
-                    <input
-                      type="range"
-                      min="0"
-                      max="10"
-                      value={remedyEffectiveness}
-                      onChange={(e) => setRemedyEffectiveness(Number(e.target.value))}
-                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                    />
-                  </div>
-                )}
-
-                {/* Symptoms */}
-                <div>
-                  <label className="text-sm font-medium mb-2 block">Symptoms</label>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                    {symptoms.map((symptom) => (
-                      <button
-                        key={symptom}
-                        onClick={() => {
-                          if (selectedSymptoms.includes(symptom)) {
-                            setSelectedSymptoms(selectedSymptoms.filter((s) => s !== symptom))
-                          } else {
-                            setSelectedSymptoms([...selectedSymptoms, symptom])
+                          placeholder="e.g., 90"
+                          className="w-full p-3 border border-gray-200 rounded-lg"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium block mb-2">Symptom Duration (minutes)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="480"
+                          value={symptomDurationMin}
+                          onChange={(e) =>
+                            setSymptomDurationMin(e.target.value === "" ? "" : Number(e.target.value))
                           }
-                        }}
-                        className={`p-2 text-xs rounded-lg border transition-all ${
-                          selectedSymptoms.includes(symptom)
-                            ? "bg-blue-500 text-white border-blue-500"
-                            : "bg-white text-gray-700 border-gray-200 hover:border-blue-300"
-                        }`}
-                      >
-                        {symptom}
-                      </button>
-                    ))}
+                          placeholder="e.g., 120"
+                          className="w-full p-3 border border-gray-200 rounded-lg"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium block mb-2">Hydration Tolerance</label>
+                        <select
+                          value={hydrationTolerance}
+                          onChange={(e) => setHydrationTolerance(e.target.value as typeof hydrationTolerance)}
+                          className="w-full p-3 border border-gray-200 rounded-lg"
+                        >
+                          <option value="">Select</option>
+                          <option value="good">Good</option>
+                          <option value="moderate">Moderate</option>
+                          <option value="poor">Poor</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Possible Triggers</label>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        {triggers.map((trigger) => (
+                          <button
+                            key={trigger}
+                            onClick={() => {
+                              if (selectedTriggers.includes(trigger)) {
+                                setSelectedTriggers(selectedTriggers.filter((t) => t !== trigger))
+                              } else {
+                                setSelectedTriggers([...selectedTriggers, trigger])
+                              }
+                            }}
+                            className={`p-2 text-xs rounded-lg border transition-all ${
+                              selectedTriggers.includes(trigger)
+                                ? "bg-amber-500 text-white border-amber-500"
+                                : "bg-white text-gray-700 border-gray-200 hover:border-amber-300"
+                            }`}
+                          >
+                            {trigger}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
-                {/* Meal & Context */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="text-sm font-medium block mb-2">Time of Ingestion</label>
-                    <input
-                      type="time"
-                      value={ingestionTime}
-                      onChange={(e) => setIngestionTime(e.target.value)}
-                      className="w-full p-3 border border-gray-200 rounded-lg"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium block mb-2">Meal Size</label>
-                    <select
-                      value={mealSize}
-                      onChange={(e) => setMealSize(e.target.value)}
-                      className="w-full p-3 border border-gray-200 rounded-lg"
-                    >
-                      <option value="">Select meal size</option>
-                      <option value="small">Small</option>
-                      <option value="medium">Medium</option>
-                      <option value="large">Large</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium block mb-2">Hours Since Eating: {timeSinceEating}</label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="12"
-                      value={timeSinceEating}
-                      onChange={(e) => setTimeSinceEating(Number(e.target.value))}
-                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium block mb-2">Sleep Quality: {sleepQuality}/10</label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="10"
-                      value={sleepQuality}
-                      onChange={(e) => setSleepQuality(Number(e.target.value))}
-                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium block mb-2">Exercise Level: {exerciseLevel}/10</label>
-                    <input
-                      type="range"
-                      min="0"
-                      max="10"
-                      value={exerciseLevel}
-                      onChange={(e) => setExerciseLevel(Number(e.target.value))}
-                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-sm font-medium block mb-2">Weather</label>
-                    <select
-                      value={weatherCondition}
-                      onChange={(e) => setWeatherCondition(e.target.value)}
-                      className="w-full p-3 border border-gray-200 rounded-lg"
-                    >
-                      <option value="">Select weather</option>
-                      {weatherOptions.map((weather) => (
-                        <option key={weather} value={weather}>
-                          {weather}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Notes */}
+                {/* Section: Relief & Medication */}
                 <div>
-                  <label className="text-sm font-medium block mb-2">Additional Notes</label>
-                  <textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Any additional details about your symptoms, what you ate, activities, etc."
-                    className="w-full p-3 border border-gray-200 rounded-lg resize-none h-24"
-                  />
+                  <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                    <Brain className="w-4 h-4" /> Relief & Medication
+                  </h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-sm font-medium block mb-2">Medication Taken (comma-separated)</label>
+                      <input
+                        type="text"
+                        value={medicationTakenInput}
+                        onChange={(e) => setMedicationTakenInput(e.target.value)}
+                        placeholder="e.g., Tums, Omeprazole"
+                        className="w-full p-3 border border-gray-200 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium block mb-2">
+                        Medication Effectiveness (format: Name:0-10, e.g., Tums:2, Omeprazole:7)
+                      </label>
+                      <input
+                        type="text"
+                        value={medicationEffectivenessInput}
+                        onChange={(e) => setMedicationEffectivenessInput(e.target.value)}
+                        placeholder="Tums:2, Omeprazole:7"
+                        className="w-full p-3 border border-gray-200 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium mb-2 block">Remedies Used</label>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                        {remedies.map((remedy) => (
+                          <button
+                            key={remedy}
+                            onClick={() => {
+                              if (selectedRemedies.includes(remedy)) {
+                                setSelectedRemedies(selectedRemedies.filter((r) => r !== remedy))
+                              } else {
+                                setSelectedRemedies([...selectedRemedies, remedy])
+                              }
+                            }}
+                            className={`p-2 text-xs rounded-lg border transition-all ${
+                              selectedRemedies.includes(remedy)
+                                ? "bg-green-500 text-white border-green-500"
+                                : "bg-white text-gray-700 border-gray-200 hover:border-green-300"
+                            }`}
+                          >
+                            {remedy}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {selectedRemedies.length > 0 && (
+                      <div>
+                        <label className="text-sm font-medium block mb-2">Remedy Effectiveness: {remedyEffectiveness}/10</label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="10"
+                          value={remedyEffectiveness}
+                          onChange={(e) => setRemedyEffectiveness(Number(e.target.value))}
+                          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                        />
+                      </div>
+                    )}
+                    <div>
+                      <label className="text-sm font-medium block mb-2">Relief Time (minutes)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="480"
+                        value={reliefTimeMin}
+                        onChange={(e) =>
+                          setReliefTimeMin(e.target.value === "" ? "" : Number(e.target.value))
+                        }
+                        placeholder="How long until relief?"
+                        className="w-full p-3 border border-gray-200 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium block mb-2">Bowel Changes (comma-separated)</label>
+                      <input
+                        type="text"
+                        value={bowelChangesInput}
+                        onChange={(e) => setBowelChangesInput(e.target.value)}
+                        placeholder="e.g., Loose, Constipated"
+                        className="w-full p-3 border border-gray-200 rounded-lg"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Section: Context */}
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                    <Calendar className="w-4 h-4" /> Context
+                  </h3>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-sm font-medium block mb-2">Stress Level: {stressLevel}/10</label>
+                      <p className="text-xs text-gray-600 mb-2">{getStressDescription(stressLevel)}</p>
+                      <input
+                        type="range"
+                        min="0"
+                        max="10"
+                        value={stressLevel}
+                        onChange={(e) => setStressLevel(Number(e.target.value))}
+                        className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm font-medium block mb-2">Sleep Quality: {sleepQuality}/10</label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="10"
+                          value={sleepQuality}
+                          onChange={(e) => setSleepQuality(Number(e.target.value))}
+                          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm font-medium block mb-2">Exercise Level: {exerciseLevel}/10</label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="10"
+                          value={exerciseLevel}
+                          onChange={(e) => setExerciseLevel(Number(e.target.value))}
+                          className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium block mb-2">Additional Notes</label>
+                      <textarea
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        placeholder="Any other details about your symptoms, activities, etc."
+                        className="w-full p-3 border border-gray-200 rounded-lg resize-none h-24"
+                      />
+                    </div>
+                  </div>
                 </div>
 
                 <button
@@ -1809,11 +2075,145 @@ export default function GastroGuardApp() {
           </div>
         )}
 
-        {/* Other placeholder views */}
-        {currentView === "analytics" && (
-          <div className="bg-white/80 backdrop-blur-sm border border-white/20 shadow-xl rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Analytics</h2>
-            <p>Analytics view coming soon...</p>
+        {/* Digestive Pattern Insights */}
+        {currentView === "insights" && (
+          <div className="space-y-6">
+            <div className="bg-white/80 backdrop-blur-sm border border-white/20 shadow-xl rounded-lg p-6">
+              <div className="flex items-center gap-2 mb-4">
+                <Lightbulb className="w-5 h-5 text-amber-500" />
+                <h2 className="text-xl font-semibold">Digestive Pattern Insights</h2>
+              </div>
+              <p className="text-gray-600 mb-6">
+                Pattern-based insights from your logged data. These are observational patterns, not medical diagnoses.
+              </p>
+
+              {entries.length < 2 ? (
+                <div className="text-center py-12 px-4 bg-gray-50 rounded-xl border border-gray-200">
+                  <Lightbulb className="w-12 h-12 mx-auto mb-4 text-amber-400" />
+                  <p className="text-gray-600 font-medium mb-2">Log meals, symptoms, and remedies over time</p>
+                  <p className="text-sm text-gray-500">
+                    Add at least 2 entries with symptom details to unlock pattern-based digestive insights.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {/* Generated insight cards */}
+                  {(() => {
+                    const insights = generateInsights(entries)
+                    return insights.length > 0 ? (
+                      <div>
+                        <h3 className="text-sm font-semibold text-gray-700 mb-3">Pattern Insights</h3>
+                        <div className="space-y-3">
+                          {insights.map((insight, i) => (
+                            <div
+                              key={i}
+                              className={`p-4 rounded-lg border-l-4 ${
+                                insight.confidence === "high"
+                                  ? "bg-amber-50 border-amber-500"
+                                  : insight.confidence === "medium"
+                                    ? "bg-blue-50 border-blue-500"
+                                    : "bg-gray-50 border-gray-400"
+                              }`}
+                            >
+                              <h4 className="font-medium text-gray-900 mb-1">{insight.title}</h4>
+                              <p className="text-sm text-gray-600">{insight.description}</p>
+                              <span className="text-xs text-gray-500 mt-2 inline-block">
+                                {insight.confidence} confidence · {insight.type}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null
+                  })()}
+
+                  {/* Summary cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Tolerated foods */}
+                    {(() => {
+                      const tolerated = getTopToleratedFoods(entries)
+                      return tolerated.length > 0 ? (
+                        <div className="p-4 bg-green-50 rounded-xl border border-green-200">
+                          <h4 className="font-semibold text-green-800 mb-2">Foods That Appear Better Tolerated</h4>
+                          <ul className="text-sm text-green-700 space-y-1">
+                            {tolerated.slice(0, 5).map((t) => (
+                              <li key={t.food}>
+                                {t.food} ({t.count} entries)
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null
+                    })()}
+
+                    {/* Suspected triggers */}
+                    {(() => {
+                      const triggers = getTopSuspectedTriggers(entries)
+                      return triggers.length > 0 ? (
+                        <div className="p-4 bg-amber-50 rounded-xl border border-amber-200">
+                          <h4 className="font-semibold text-amber-800 mb-2">Possible Triggers</h4>
+                          <ul className="text-sm text-amber-700 space-y-1">
+                            {triggers.slice(0, 5).map((t) => (
+                              <li key={t.trigger}>
+                                {t.trigger} ({t.count} entries)
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null
+                    })()}
+
+                    {/* Helpful medications */}
+                    {(() => {
+                      const helpful = getHelpfulMedications(entries)
+                      return helpful.length > 0 ? (
+                        <div className="p-4 bg-blue-50 rounded-xl border border-blue-200">
+                          <h4 className="font-semibold text-blue-800 mb-2">Medications That Appear Helpful</h4>
+                          <ul className="text-sm text-blue-700 space-y-1">
+                            {helpful.slice(0, 5).map((m) => (
+                              <li key={m.name}>
+                                {m.name} (avg {m.avgEffectiveness.toFixed(1)}/10, {m.count} entries)
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null
+                    })()}
+
+                    {/* Unhelpful medications */}
+                    {(() => {
+                      const unhelpful = getUnhelpfulMedications(entries)
+                      return unhelpful.length > 0 ? (
+                        <div className="p-4 bg-red-50 rounded-xl border border-red-200">
+                          <h4 className="font-semibold text-red-800 mb-2">Medications That Appear Ineffective</h4>
+                          <ul className="text-sm text-red-700 space-y-1">
+                            {unhelpful.slice(0, 5).map((m) => (
+                              <li key={m.name}>
+                                {m.name} (avg {m.avgEffectiveness.toFixed(1)}/10, {m.count} entries)
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ) : null
+                    })()}
+                  </div>
+
+                  {/* Symptom timing */}
+                  {(() => {
+                    const avgDelay = getAverageSymptomDelay(entries)
+                    return avgDelay != null ? (
+                      <div className="p-4 bg-purple-50 rounded-xl border border-purple-200">
+                        <h4 className="font-semibold text-purple-800 mb-2">Symptom Timing Pattern</h4>
+                        <p className="text-sm text-purple-700">
+                          Symptoms often begin about {Math.floor(avgDelay / 60)}h {avgDelay % 60}min after eating
+                          (average across {entries.filter((e) => e.symptomStartDelayMin != null).length} entries).
+                        </p>
+                      </div>
+                    ) : null
+                  })()}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -1893,7 +2293,7 @@ export default function GastroGuardApp() {
             { id: "dashboard", icon: Home, label: "Dashboard" },
             { id: "enhanced-log", icon: PenTool, label: "Log" },
             { id: "simulation", icon: Zap, label: "Simulate" },
-            { id: "analytics", icon: BarChart, label: "Analytics" },
+            { id: "insights", icon: Lightbulb, label: "Insights" },
             { id: "profile", icon: Activity, label: "Profile" },
           ].map((tab) => (
             <button
