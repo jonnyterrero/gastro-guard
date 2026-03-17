@@ -63,6 +63,20 @@ interface Integration {
   permissions: string[]
 }
 
+const DEFAULT_PROFILE: UserProfile = {
+  name: "",
+  age: 0,
+  height: "",
+  weight: "",
+  gender: "",
+  conditions: [],
+  medications: [],
+  allergies: [],
+  dietaryRestrictions: [],
+  triggers: [],
+  effectiveRemedies: [],
+}
+
 export default function GastroGuardApp() {
   const [mounted, setMounted] = useState(false)
   const [currentView, setCurrentView] = useState("dashboard")
@@ -121,6 +135,7 @@ export default function GastroGuardApp() {
   const [selectedTriggers, setSelectedTriggers] = useState<string[]>([])
   const [selectedRemedies, setSelectedRemedies] = useState<string[]>([])
   const [remedyEffectiveness, setRemedyEffectiveness] = useState<number>(0)
+  const [isSaving, setIsSaving] = useState(false)
   const [notes, setNotes] = useState("")
   const [mealSize, setMealSize] = useState("")
   const [timeSinceEating, setTimeSinceEating] = useState(0)
@@ -184,69 +199,90 @@ export default function GastroGuardApp() {
   const weatherOptions = ["Sunny", "Cloudy", "Rainy", "Stormy", "Hot", "Cold", "Humid", "Dry"]
   const genderOptions = ["Male", "Female", "Non-binary", "Prefer not to say", "AMAB", "AFAB"]
 
+  const safeParse = <T,>(value: string | null, fallback: T): T => {
+    if (!value) return fallback
+    try {
+      return JSON.parse(value) as T
+    } catch (error) {
+      console.error("Failed to parse localStorage data:", error)
+      return fallback
+    }
+  }
+
   useEffect(() => {
     setMounted(true)
-    // Load data from localStorage
-    try {
-      const savedEntries = localStorage.getItem("gastroguard-entries")
-      const savedProfile = localStorage.getItem("gastroguard-profile")
-      const savedIntegrations = localStorage.getItem("gastroguard-integrations")
-
-      if (savedEntries) {
-        setEntries(JSON.parse(savedEntries))
-      }
-      if (savedProfile) {
-        setUserProfile(JSON.parse(savedProfile))
-      }
-      if (savedIntegrations) {
-        setIntegrations(JSON.parse(savedIntegrations))
-      }
-    } catch (error) {
-      console.error("Error loading saved data:", error)
-    }
+    setEntries(safeParse<LogEntry[]>(localStorage.getItem("gastroguard-entries"), []))
+    setUserProfile(safeParse<UserProfile>(localStorage.getItem("gastroguard-profile"), DEFAULT_PROFILE))
+    setIntegrations(safeParse<Integration[]>(localStorage.getItem("gastroguard-integrations"), []))
   }, [])
 
   const saveEntry = () => {
-    const newEntry: LogEntry = {
-      id: Date.now().toString(),
-      date: new Date().toISOString().split("T")[0],
-      time: new Date().toLocaleTimeString(),
-      painLevel,
-      stressLevel,
-      symptoms: selectedSymptoms,
-      triggers: selectedTriggers,
-      remedies: selectedRemedies,
-      remedyEffectiveness: selectedRemedies.length > 0 ? remedyEffectiveness : undefined,
-      notes,
-      mealSize,
-      timeSinceEating,
-      sleepQuality,
-      exerciseLevel,
-      weatherCondition,
-      ingestionTime,
+    if (isSaving) return
+
+    const hasMeaningfulData =
+      painLevel > 0 ||
+      stressLevel > 0 ||
+      selectedSymptoms.length > 0 ||
+      selectedTriggers.length > 0 ||
+      selectedRemedies.length > 0 ||
+      notes.trim() !== "" ||
+      mealSize !== "" ||
+      timeSinceEating > 0 ||
+      ingestionTime !== ""
+
+    if (!hasMeaningfulData) {
+      toast.error("Please log at least one meaningful symptom, meal, trigger, or remedy.")
+      return
     }
 
-    const updatedEntries = [...entries, newEntry]
-    setEntries(updatedEntries)
-    localStorage.setItem("gastroguard-entries", JSON.stringify(updatedEntries))
+    try {
+      setIsSaving(true)
 
-    // Reset form
-    setPainLevel(0)
-    setStressLevel(0)
-    setSelectedSymptoms([])
-    setSelectedTriggers([])
-    setSelectedRemedies([])
-    setRemedyEffectiveness(0)
-    setNotes("")
-    setMealSize("")
-    setTimeSinceEating(0)
-    setSleepQuality(5)
-    setExerciseLevel(0)
-    setWeatherCondition("")
-    setIngestionTime("")
+      const newEntry: LogEntry = {
+        id: crypto.randomUUID(),
+        date: new Date().toISOString().split("T")[0],
+        time: new Date().toLocaleTimeString(),
+        painLevel,
+        stressLevel,
+        symptoms: selectedSymptoms,
+        triggers: selectedTriggers,
+        remedies: selectedRemedies,
+        remedyEffectiveness: selectedRemedies.length > 0 ? remedyEffectiveness : undefined,
+        notes: notes.trim(),
+        mealSize: mealSize || undefined,
+        timeSinceEating: timeSinceEating || undefined,
+        sleepQuality,
+        exerciseLevel,
+        weatherCondition: weatherCondition || undefined,
+        ingestionTime: ingestionTime || undefined,
+      }
 
-    toast.success("Entry saved successfully!")
-    setCurrentView("dashboard")
+      const updatedEntries = [...entries, newEntry]
+      setEntries(updatedEntries)
+      localStorage.setItem("gastroguard-entries", JSON.stringify(updatedEntries))
+
+      setPainLevel(0)
+      setStressLevel(0)
+      setSelectedSymptoms([])
+      setSelectedTriggers([])
+      setSelectedRemedies([])
+      setRemedyEffectiveness(0)
+      setNotes("")
+      setMealSize("")
+      setTimeSinceEating(0)
+      setSleepQuality(5)
+      setExerciseLevel(0)
+      setWeatherCondition("")
+      setIngestionTime("")
+
+      toast.success("Entry saved successfully!")
+      setCurrentView("dashboard")
+    } catch (error) {
+      console.error("Failed to save entry:", error)
+      toast.error("Failed to save entry. Check storage availability.")
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const saveProfile = () => {
@@ -937,20 +973,78 @@ export default function GastroGuardApp() {
                   </div>
                 </div>
 
-                {/* Time Since Eating (optional, for timeline) */}
-                <div>
-                  <label className="text-sm font-medium block mb-2">Hours Since Eating (optional)</label>
-                  <input
-                    type="number"
-                    min="0"
-                    max="24"
-                    step="0.5"
-                    value={timeSinceEating || ""}
-                    onChange={(e) => setTimeSinceEating(Number(e.target.value) || 0)}
-                    placeholder="Leave blank if unknown"
-                    className="w-full p-3 border border-gray-200 rounded-lg"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Used for pain timeline; omit if unknown</p>
+                {/* Meal & Context */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-sm font-medium block mb-2">Time of Ingestion</label>
+                    <input
+                      type="time"
+                      value={ingestionTime}
+                      onChange={(e) => setIngestionTime(e.target.value)}
+                      className="w-full p-3 border border-gray-200 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium block mb-2">Meal Size</label>
+                    <select
+                      value={mealSize}
+                      onChange={(e) => setMealSize(e.target.value)}
+                      className="w-full p-3 border border-gray-200 rounded-lg"
+                    >
+                      <option value="">Select meal size</option>
+                      <option value="small">Small</option>
+                      <option value="medium">Medium</option>
+                      <option value="large">Large</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium block mb-2">Hours Since Eating: {timeSinceEating}</label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="12"
+                      value={timeSinceEating}
+                      onChange={(e) => setTimeSinceEating(Number(e.target.value))}
+                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium block mb-2">Sleep Quality: {sleepQuality}/10</label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="10"
+                      value={sleepQuality}
+                      onChange={(e) => setSleepQuality(Number(e.target.value))}
+                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium block mb-2">Exercise Level: {exerciseLevel}/10</label>
+                    <input
+                      type="range"
+                      min="0"
+                      max="10"
+                      value={exerciseLevel}
+                      onChange={(e) => setExerciseLevel(Number(e.target.value))}
+                      className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium block mb-2">Weather</label>
+                    <select
+                      value={weatherCondition}
+                      onChange={(e) => setWeatherCondition(e.target.value)}
+                      className="w-full p-3 border border-gray-200 rounded-lg"
+                    >
+                      <option value="">Select weather</option>
+                      {weatherOptions.map((weather) => (
+                        <option key={weather} value={weather}>
+                          {weather}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 {/* Notes */}
@@ -966,10 +1060,11 @@ export default function GastroGuardApp() {
 
                 <button
                   onClick={saveEntry}
-                  className="w-full p-3 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg font-semibold hover:shadow-lg transform hover:scale-105 transition-all duration-200 flex items-center justify-center gap-2"
+                  disabled={isSaving}
+                  className="w-full p-3 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg font-semibold hover:shadow-lg transform hover:scale-105 transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                 >
                   <Save className="w-5 h-5" />
-                  Save Entry
+                  {isSaving ? "Saving..." : "Save Entry"}
                 </button>
               </div>
             </div>
@@ -1030,6 +1125,41 @@ export default function GastroGuardApp() {
                         })
                       }
                       placeholder="Enter your age"
+                      className="w-full p-3 border border-gray-200 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium block mb-2">Gender</label>
+                    <select
+                      value={userProfile.gender}
+                      onChange={(e) => setUserProfile({ ...userProfile, gender: e.target.value })}
+                      className="w-full p-3 border border-gray-200 rounded-lg"
+                    >
+                      <option value="">Select gender</option>
+                      {genderOptions.map((gender) => (
+                        <option key={gender} value={gender}>
+                          {gender}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium block mb-2">Height</label>
+                    <input
+                      type="text"
+                      value={userProfile.height}
+                      onChange={(e) => setUserProfile({ ...userProfile, height: e.target.value })}
+                      placeholder="e.g., 5'10&quot; or 178cm"
+                      className="w-full p-3 border border-gray-200 rounded-lg"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium block mb-2">Weight</label>
+                    <input
+                      type="text"
+                      value={userProfile.weight}
+                      onChange={(e) => setUserProfile({ ...userProfile, weight: e.target.value })}
+                      placeholder="e.g., 150 lbs or 68 kg"
                       className="w-full p-3 border border-gray-200 rounded-lg"
                     />
                   </div>
@@ -1103,6 +1233,26 @@ export default function GastroGuardApp() {
                       })
                     }
                     placeholder="e.g., Penicillin, NSAIDs (comma-separated)"
+                    className="w-full p-3 border border-gray-200 rounded-lg"
+                  />
+                </div>
+
+                {/* Dietary Restrictions */}
+                <div>
+                  <label className="text-sm font-medium block mb-2">Dietary Restrictions</label>
+                  <input
+                    type="text"
+                    value={userProfile.dietaryRestrictions.join(", ")}
+                    onChange={(e) =>
+                      setUserProfile({
+                        ...userProfile,
+                        dietaryRestrictions: e.target.value
+                          .split(",")
+                          .map((d) => d.trim())
+                          .filter(Boolean),
+                      })
+                    }
+                    placeholder="e.g., Low FODMAP, Gluten-free (comma-separated)"
                     className="w-full p-3 border border-gray-200 rounded-lg"
                   />
                 </div>
