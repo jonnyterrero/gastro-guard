@@ -449,3 +449,39 @@ Ready to take control of your chronic stomach condition management?
 
 **🌟 Join thousands of users who have transformed their relationship with chronic stomach conditions through GastroGuard Enhanced v3.0!**
 
+
+---
+
+## 🔧 Backend (Supabase + Next.js API)
+
+A production-ready backend starter is now included for your `gastro-backend` branch.
+
+### Environment setup
+
+1. Copy `.env.example` to `.env.local`.
+2. Set your Supabase values:
+   - `NEXT_PUBLIC_SUPABASE_URL`
+   - `SUPABASE_SERVICE_ROLE_KEY`
+
+### Create tables in Supabase
+
+Run the SQL from `supabase/schema.sql` in your Supabase SQL Editor.
+
+### API endpoints
+
+All endpoints currently use `x-user-id` header so you can test quickly before wiring full Supabase Auth.
+
+- `GET /api/health` — health check
+- `GET /api/profiles` — fetch profile by user id
+- `PUT /api/profiles` — upsert profile
+- `GET /api/entries?limit=200` — list user logs
+- `POST /api/entries` — create a log
+- `PATCH /api/entries/:id` — update a log
+- `DELETE /api/entries/:id` — delete a log
+
+### Notes
+
+- Input validation is handled with Zod.
+- Request/response keys are camelCase for frontend compatibility.
+- Database columns are snake_case following Postgres conventions.
+
