@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import Link from "next/link"
 import {
   Activity,
   ArrowLeft,
@@ -17,7 +18,80 @@ import {
   RefreshCw,
   Trash2,
   Zap,
+  LogOut,
+  LogIn,
 } from "lucide-react"
+import { createClient } from "@/lib/supabase/client"
+import type { User } from "@supabase/supabase-js"
+import { toDbPayload, fromDbRow } from "@/lib/adapter/log-entry"
+
+function AnalyticsView({ user }: { user: User | null }) {
+  const [timeline, setTimeline] = useState<Array<{ event_type: string; occurred_at: string; title: string; details: unknown }>>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!user) {
+      setTimeline([])
+      setLoading(false)
+      return
+    }
+    let cancelled = false
+    const supabase = createClient()
+    ;(async () => {
+      const { data, error } = await supabase
+        .from("v_user_timeline")
+        .select("event_type, occurred_at, title, details")
+        .order("occurred_at", { ascending: false })
+        .limit(50)
+      if (!cancelled) {
+        if (error) console.error("Analytics error:", error)
+        setTimeline(data ?? [])
+      }
+      setLoading(false)
+    })()
+    return () => { cancelled = true }
+  }, [user?.id])
+
+  if (!user) {
+    return (
+      <div className="bg-white/80 backdrop-blur-sm border border-white/20 shadow-xl rounded-lg p-6">
+        <h2 className="text-xl font-semibold mb-4">Analytics</h2>
+        <p className="text-gray-600">Sign in to view your event timeline and analytics.</p>
+      </div>
+    )
+  }
+  if (loading) {
+    return (
+      <div className="bg-white/80 backdrop-blur-sm border border-white/20 shadow-xl rounded-lg p-6">
+        <h2 className="text-xl font-semibold mb-4">Analytics</h2>
+        <p className="text-gray-600">Loading timeline...</p>
+      </div>
+    )
+  }
+  return (
+    <div className="bg-white/80 backdrop-blur-sm border border-white/20 shadow-xl rounded-lg p-6">
+      <h2 className="text-xl font-semibold mb-4">Event Timeline</h2>
+      <p className="text-sm text-gray-600 mb-4">Unified stream from log entries and normalized events</p>
+      {timeline.length === 0 ? (
+        <p className="text-gray-600">No events yet. Log some entries to see your timeline.</p>
+      ) : (
+        <div className="space-y-3 max-h-[60vh] overflow-y-auto">
+          {timeline.map((e, i) => (
+            <div key={i} className="p-3 bg-gray-50 rounded-lg border-l-4 border-cyan-500">
+              <div className="flex justify-between items-start">
+                <span className="font-medium">{e.title}</span>
+                <span className="text-xs text-gray-500">
+                  {new Date(e.occurred_at).toLocaleString()}
+                </span>
+              </div>
+              <span className="text-xs text-cyan-600">{e.event_type}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
 
 interface LogEntry {
   id: string
@@ -62,6 +136,7 @@ interface Integration {
 
 export default function GastroGuardApp() {
   const [mounted, setMounted] = useState(false)
+  const [user, setUser] = useState<User | null>(null)
   const [currentView, setCurrentView] = useState("dashboard")
   const [entries, setEntries] = useState<LogEntry[]>([])
   const [userProfile, setUserProfile] = useState<UserProfile>({
@@ -175,65 +250,131 @@ export default function GastroGuardApp() {
 
   useEffect(() => {
     setMounted(true)
-    // Load data from localStorage
+    // Load profile and integrations from localStorage (not yet in Supabase)
     try {
-      const savedEntries = localStorage.getItem("gastroguard-entries")
       const savedProfile = localStorage.getItem("gastroguard-profile")
       const savedIntegrations = localStorage.getItem("gastroguard-integrations")
-
-      if (savedEntries) {
-        setEntries(JSON.parse(savedEntries))
-      }
-      if (savedProfile) {
-        setUserProfile(JSON.parse(savedProfile))
-      }
-      if (savedIntegrations) {
-        setIntegrations(JSON.parse(savedIntegrations))
-      }
+      if (savedProfile) setUserProfile(JSON.parse(savedProfile))
+      if (savedIntegrations) setIntegrations(JSON.parse(savedIntegrations))
     } catch (error) {
       console.error("Error loading saved data:", error)
     }
   }, [])
 
-  const saveEntry = () => {
-    const newEntry: LogEntry = {
-      id: Date.now().toString(),
-      date: new Date().toISOString().split("T")[0],
-      time: new Date().toLocaleTimeString(),
-      painLevel,
-      stressLevel,
-      symptoms: selectedSymptoms,
-      triggers: selectedTriggers,
-      remedies: selectedRemedies,
-      notes,
-      mealSize,
-      timeSinceEating,
-      sleepQuality,
-      exerciseLevel,
-      weatherCondition,
-      ingestionTime,
+  useEffect(() => {
+    const supabase = createClient()
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null)
+    })
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  // Load entries: from Supabase when logged in, else localStorage
+  useEffect(() => {
+    if (!mounted) return
+
+    async function loadEntries() {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+
+      if (session?.user) {
+        const { data, error } = await supabase
+          .from("log_entries")
+          .select("*")
+          .order("entry_at", { ascending: false })
+        if (error) {
+          console.error("Error loading entries from Supabase:", error)
+          return
+        }
+        setEntries((data ?? []).map(fromDbRow))
+      } else {
+        try {
+          const saved = localStorage.getItem("gastroguard-entries")
+          if (saved) setEntries(JSON.parse(saved))
+        } catch {
+          /* ignore */
+        }
+      }
+    }
+    loadEntries()
+  }, [mounted, user?.id])
+
+  const saveEntry = async () => {
+    const resetForm = () => {
+      setPainLevel(0)
+      setStressLevel(0)
+      setSelectedSymptoms([])
+      setSelectedTriggers([])
+      setSelectedRemedies([])
+      setNotes("")
+      setMealSize("")
+      setTimeSinceEating(0)
+      setSleepQuality(5)
+      setExerciseLevel(0)
+      setWeatherCondition("")
+      setIngestionTime("")
     }
 
-    const updatedEntries = [...entries, newEntry]
-    setEntries(updatedEntries)
-    localStorage.setItem("gastroguard-entries", JSON.stringify(updatedEntries))
+    const supabase = createClient()
+    const { data: { session } } = await supabase.auth.getSession()
 
-    // Reset form
-    setPainLevel(0)
-    setStressLevel(0)
-    setSelectedSymptoms([])
-    setSelectedTriggers([])
-    setSelectedRemedies([])
-    setNotes("")
-    setMealSize("")
-    setTimeSinceEating(0)
-    setSleepQuality(5)
-    setExerciseLevel(0)
-    setWeatherCondition("")
-    setIngestionTime("")
-
-    alert("Entry saved successfully!")
-    setCurrentView("dashboard")
+    if (session?.user) {
+      const payload = toDbPayload(
+        {
+          painLevel,
+          stressLevel,
+          selectedSymptoms,
+          selectedTriggers,
+          selectedRemedies,
+          notes,
+          mealSize,
+          timeSinceEating,
+          sleepQuality,
+          exerciseLevel,
+          weatherCondition,
+          ingestionTime,
+        },
+        session.user.id
+      )
+      const { data, error } = await supabase.from("log_entries").insert(payload).select("id, entry_at, entry_date, pain_score, stress_score, symptoms, triggers, remedies, notes, meal_name").single()
+      if (error) {
+        alert("Failed to save: " + error.message)
+        return
+      }
+      setEntries((prev) => [fromDbRow(data), ...prev])
+      resetForm()
+      alert("Entry saved successfully!")
+      setCurrentView("dashboard")
+    } else {
+      const newEntry: LogEntry = {
+        id: Date.now().toString(),
+        date: new Date().toISOString().split("T")[0],
+        time: new Date().toLocaleTimeString(),
+        painLevel,
+        stressLevel,
+        symptoms: selectedSymptoms,
+        triggers: selectedTriggers,
+        remedies: selectedRemedies,
+        notes,
+        mealSize,
+        timeSinceEating,
+        sleepQuality,
+        exerciseLevel,
+        weatherCondition,
+        ingestionTime,
+      }
+      const updatedEntries = [...entries, newEntry]
+      setEntries(updatedEntries)
+      localStorage.setItem("gastroguard-entries", JSON.stringify(updatedEntries))
+      resetForm()
+      alert("Entry saved locally. Sign in to sync across devices.")
+      setCurrentView("dashboard")
+    }
   }
 
   const saveProfile = () => {
@@ -502,6 +643,28 @@ export default function GastroGuardApp() {
               </h1>
               <p className="text-sm text-gray-600">Enhanced v3.0</p>
             </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {user ? (
+              <button
+                onClick={async () => {
+                  const supabase = createClient()
+                  await supabase.auth.signOut()
+                }}
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/80 backdrop-blur-sm border border-white/20 shadow-lg hover:bg-white/90 transition-all duration-200 text-sm text-gray-600"
+              >
+                <LogOut className="w-4 h-4" />
+                Sign out
+              </button>
+            ) : (
+              <Link
+                href="/auth"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 text-white shadow-lg hover:from-cyan-700 hover:to-blue-700 transition-all duration-200 text-sm font-medium"
+              >
+                <LogIn className="w-4 h-4" />
+                Sign in
+              </Link>
+            )}
           </div>
         </div>
 
@@ -1239,12 +1402,9 @@ export default function GastroGuardApp() {
           </div>
         )}
 
-        {/* Other placeholder views */}
+        {/* Analytics - v_user_timeline */}
         {currentView === "analytics" && (
-          <div className="bg-white/80 backdrop-blur-sm border border-white/20 shadow-xl rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">Analytics</h2>
-            <p>Analytics view coming soon...</p>
-          </div>
+          <AnalyticsView user={user} />
         )}
 
         {currentView === "history" && (
