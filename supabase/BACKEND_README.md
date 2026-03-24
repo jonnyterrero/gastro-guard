@@ -1,5 +1,15 @@
 # GastroGuard Hybrid Backend
 
+## Migration: `integrations` on profiles
+
+Run [migrations/20260320000000_profiles_integrations_jsonb.sql](migrations/20260320000000_profiles_integrations_jsonb.sql) in the SQL Editor if you already applied the main migration before this column was added:
+
+```sql
+alter table public.profiles add column if not exists integrations jsonb default '[]'::jsonb;
+```
+
+---
+
 ## Applying the Migration
 
 Run the migration against your Supabase project:

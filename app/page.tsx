@@ -20,10 +20,13 @@ import {
   Zap,
   LogOut,
   LogIn,
+  Pencil,
 } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
 import type { User } from "@supabase/supabase-js"
-import { toDbPayload, fromDbRow } from "@/lib/adapter/log-entry"
+import { toDbPayload, fromDbRow, toDbUpdatePayload } from "@/lib/adapter/log-entry"
+import type { UserProfile, Integration } from "@/lib/profile"
+import { fetchProfileAndIntegrations, userProfileToUpsert } from "@/lib/profile"
 
 function AnalyticsView({ user }: { user: User | null }) {
   const [timeline, setTimeline] = useState<Array<{ event_type: string; occurred_at: string; title: string; details: unknown }>>([])
@@ -109,30 +112,10 @@ interface LogEntry {
   exerciseLevel?: number
   weatherCondition?: string
   ingestionTime?: string
+  entryAtIso?: string
 }
 
-interface UserProfile {
-  name: string
-  age: number
-  height: string
-  weight: string
-  gender: string
-  conditions: string[]
-  medications: string[]
-  allergies: string[]
-  dietaryRestrictions: string[]
-  triggers: string[]
-  effectiveRemedies: string[]
-}
-
-interface Integration {
-  id: string
-  name: string
-  apiKey: string
-  createdAt: string
-  lastUsed?: string
-  permissions: string[]
-}
+const HISTORY_PAGE_SIZE = 20
 
 export default function GastroGuardApp() {
   const [mounted, setMounted] = useState(false)
@@ -155,6 +138,8 @@ export default function GastroGuardApp() {
 
   const [integrations, setIntegrations] = useState<Integration[]>([])
   const [showApiKey, setShowApiKey] = useState<string | null>(null)
+  const [editingEntryId, setEditingEntryId] = useState<string | null>(null)
+  const [historyPage, setHistoryPage] = useState(0)
 
   const [simulationFood, setSimulationFood] = useState("")
   const [simulationMealSize, setSimulationMealSize] = useState("medium")
@@ -250,7 +235,6 @@ export default function GastroGuardApp() {
 
   useEffect(() => {
     setMounted(true)
-    // Load profile and integrations from localStorage (not yet in Supabase)
     try {
       const savedProfile = localStorage.getItem("gastroguard-profile")
       const savedIntegrations = localStorage.getItem("gastroguard-integrations")
@@ -260,6 +244,66 @@ export default function GastroGuardApp() {
       console.error("Error loading saved data:", error)
     }
   }, [])
+
+  // Load profile + integrations from Supabase when signed in (cache in localStorage)
+  useEffect(() => {
+    if (!mounted || !user?.id) return
+    const supabase = createClient()
+    ;(async () => {
+      try {
+        let localProfile: UserProfile | null = null
+        try {
+          const raw = localStorage.getItem("gastroguard-profile")
+          if (raw) localProfile = JSON.parse(raw) as UserProfile
+        } catch {
+          /* ignore */
+        }
+        const { profile, integrations: remoteIntegrations } = await fetchProfileAndIntegrations(supabase, user.id)
+        const empty: UserProfile = {
+          name: "",
+          age: 0,
+          height: "",
+          weight: "",
+          gender: "",
+          conditions: [],
+          medications: [],
+          allergies: [],
+          dietaryRestrictions: [],
+          triggers: [],
+          effectiveRemedies: [],
+        }
+        let merged: UserProfile
+        if (profile) {
+          merged =
+            localProfile && localProfile.name && !profile.name ? { ...profile, ...localProfile } : profile
+        } else {
+          merged = localProfile ?? empty
+        }
+        setUserProfile(merged)
+        localStorage.setItem("gastroguard-profile", JSON.stringify(merged))
+        if (localProfile && localProfile.name && profile && !profile.name) {
+          await supabase.from("profiles").upsert(userProfileToUpsert(user.id, merged, remoteIntegrations), {
+            onConflict: "user_id",
+          })
+        }
+        if (remoteIntegrations.length > 0) {
+          setIntegrations(remoteIntegrations)
+          localStorage.setItem("gastroguard-integrations", JSON.stringify(remoteIntegrations))
+        } else {
+          const localInt = localStorage.getItem("gastroguard-integrations")
+          if (localInt) {
+            const parsed = JSON.parse(localInt) as Integration[]
+            if (parsed.length > 0) {
+              setIntegrations(parsed)
+              await supabase.from("profiles").update({ integrations: parsed }).eq("user_id", user.id)
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Profile load error:", e)
+      }
+    })()
+  }, [mounted, user?.id])
 
   useEffect(() => {
     const supabase = createClient()
@@ -318,29 +362,52 @@ export default function GastroGuardApp() {
       setExerciseLevel(0)
       setWeatherCondition("")
       setIngestionTime("")
+      setEditingEntryId(null)
+    }
+
+    const formFields = {
+      painLevel,
+      stressLevel,
+      selectedSymptoms,
+      selectedTriggers,
+      selectedRemedies,
+      notes,
+      mealSize,
+      timeSinceEating,
+      sleepQuality,
+      exerciseLevel,
+      weatherCondition,
+      ingestionTime,
     }
 
     const supabase = createClient()
     const { data: { session } } = await supabase.auth.getSession()
 
     if (session?.user) {
-      const payload = toDbPayload(
-        {
-          painLevel,
-          stressLevel,
-          selectedSymptoms,
-          selectedTriggers,
-          selectedRemedies,
-          notes,
-          mealSize,
-          timeSinceEating,
-          sleepQuality,
-          exerciseLevel,
-          weatherCondition,
-          ingestionTime,
-        },
-        session.user.id
-      )
+      if (editingEntryId) {
+        const existing = entries.find((e) => e.id === editingEntryId)
+        const entryAt = existing?.entryAtIso ?? new Date().toISOString()
+        const entryDate = existing?.date ?? new Date().toISOString().split("T")[0]
+        const updatePayload = toDbUpdatePayload(formFields, entryAt, entryDate)
+        const { data, error } = await supabase
+          .from("log_entries")
+          .update(updatePayload)
+          .eq("id", editingEntryId)
+          .eq("user_id", session.user.id)
+          .select("id, entry_at, entry_date, pain_score, stress_score, symptoms, triggers, remedies, notes, meal_name")
+          .single()
+        if (error) {
+          alert("Failed to update: " + error.message)
+          return
+        }
+        setEntries((prev) => prev.map((e) => (e.id === editingEntryId ? fromDbRow(data) : e)))
+        resetForm()
+        alert("Entry updated!")
+        setCurrentView("dashboard")
+        return
+      }
+
+      const payload = toDbPayload(formFields, session.user.id)
       const { data, error } = await supabase.from("log_entries").insert(payload).select("id, entry_at, entry_date, pain_score, stress_score, symptoms, triggers, remedies, notes, meal_name").single()
       if (error) {
         alert("Failed to save: " + error.message)
@@ -377,9 +444,67 @@ export default function GastroGuardApp() {
     }
   }
 
-  const saveProfile = () => {
+  const saveProfile = async () => {
     localStorage.setItem("gastroguard-profile", JSON.stringify(userProfile))
+    const supabase = createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.user) {
+      const { error } = await supabase.from("profiles").upsert(userProfileToUpsert(session.user.id, userProfile, integrations), {
+        onConflict: "user_id",
+      })
+      if (error) {
+        alert("Could not sync profile: " + error.message)
+        return
+      }
+    }
     alert("Profile updated successfully!")
+  }
+
+  const persistIntegrations = async (next: Integration[]) => {
+    setIntegrations(next)
+    localStorage.setItem("gastroguard-integrations", JSON.stringify(next))
+    const supabase = createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.user) {
+      await supabase.from("profiles").update({ integrations: next }).eq("user_id", session.user.id)
+    }
+  }
+
+  const beginEditEntry = (entry: LogEntry) => {
+    setEditingEntryId(entry.id)
+    setPainLevel(entry.painLevel)
+    setStressLevel(entry.stressLevel)
+    setSelectedSymptoms([...entry.symptoms])
+    setSelectedTriggers([...entry.triggers])
+    setSelectedRemedies([...entry.remedies])
+    setNotes(entry.notes)
+    setMealSize(entry.mealSize ?? "")
+    setTimeSinceEating(entry.timeSinceEating ?? 0)
+    setSleepQuality(entry.sleepQuality ?? 5)
+    setExerciseLevel(entry.exerciseLevel ?? 0)
+    setWeatherCondition(entry.weatherCondition ?? "")
+    setIngestionTime(entry.ingestionTime ?? "")
+    setCurrentView("enhanced-log")
+  }
+
+  const deleteEntry = async (entryId: string) => {
+    if (!confirm("Delete this entry? This cannot be undone.")) return
+    const supabase = createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    if (session?.user) {
+      const { error } = await supabase.from("log_entries").delete().eq("id", entryId).eq("user_id", session.user.id)
+      if (error) {
+        alert("Delete failed: " + error.message)
+        return
+      }
+      setEntries((prev) => prev.filter((e) => e.id !== entryId))
+    } else {
+      setEntries((prev) => {
+        const next = prev.filter((e) => e.id !== entryId)
+        localStorage.setItem("gastroguard-entries", JSON.stringify(next))
+        return next
+      })
+    }
   }
 
   const generateApiKey = () => {
@@ -404,8 +529,7 @@ export default function GastroGuardApp() {
     }
 
     const updatedIntegrations = [...integrations, newIntegration]
-    setIntegrations(updatedIntegrations)
-    localStorage.setItem("gastroguard-integrations", JSON.stringify(updatedIntegrations))
+    void persistIntegrations(updatedIntegrations)
     alert(`Integration "${name}" created successfully!`)
   }
 
@@ -415,8 +539,7 @@ export default function GastroGuardApp() {
     const updatedIntegrations = integrations.map((integration) =>
       integration.id === integrationId ? { ...integration, apiKey: generateApiKey() } : integration,
     )
-    setIntegrations(updatedIntegrations)
-    localStorage.setItem("gastroguard-integrations", JSON.stringify(updatedIntegrations))
+    void persistIntegrations(updatedIntegrations)
     alert("API key regenerated successfully!")
   }
 
@@ -424,8 +547,7 @@ export default function GastroGuardApp() {
     if (!confirm("Are you sure you want to delete this integration? This action cannot be undone.")) return
 
     const updatedIntegrations = integrations.filter((integration) => integration.id !== integrationId)
-    setIntegrations(updatedIntegrations)
-    localStorage.setItem("gastroguard-integrations", JSON.stringify(updatedIntegrations))
+    void persistIntegrations(updatedIntegrations)
     alert("Integration deleted successfully!")
   }
 
@@ -720,7 +842,10 @@ export default function GastroGuardApp() {
             {/* Quick Actions */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <button
-                onClick={() => setCurrentView("enhanced-log")}
+                onClick={() => {
+                  setEditingEntryId(null)
+                  setCurrentView("enhanced-log")
+                }}
                 className="p-6 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 text-white shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center justify-center gap-3"
               >
                 <PenTool className="w-6 h-6" />
@@ -793,17 +918,37 @@ export default function GastroGuardApp() {
                 <div className="space-y-3">
                   {recentEntries.map((entry) => (
                     <div key={entry.id} className="p-3 bg-gray-50 rounded-lg">
-                      <div className="flex justify-between items-start mb-2">
+                      <div className="flex justify-between items-start mb-2 gap-2">
                         <span className="text-sm font-medium">
                           {entry.date} at {entry.time}
                         </span>
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2 items-center justify-end">
                           <span className="text-xs bg-red-100 text-red-700 px-2 py-1 rounded">
                             Pain: {entry.painLevel}/10
                           </span>
                           <span className="text-xs bg-orange-100 text-orange-700 px-2 py-1 rounded">
                             Stress: {entry.stressLevel}/10
                           </span>
+                          {user && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => beginEditEntry(entry)}
+                                className="p-1 rounded hover:bg-white"
+                                aria-label="Edit entry"
+                              >
+                                <Pencil className="w-4 h-4 text-cyan-600" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => deleteEntry(entry.id)}
+                                className="p-1 rounded hover:bg-white"
+                                aria-label="Delete entry"
+                              >
+                                <Trash2 className="w-4 h-4 text-red-500" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
                       {entry.symptoms.length > 0 && (
@@ -821,9 +966,36 @@ export default function GastroGuardApp() {
         {currentView === "enhanced-log" && (
           <div className="space-y-6">
             <div className="bg-white/80 backdrop-blur-sm border border-white/20 shadow-xl rounded-lg p-6">
-              <div className="flex items-center gap-2 mb-2">
-                <PenTool className="w-5 h-5 text-blue-500" />
-                <h2 className="text-xl font-semibold">Enhanced Symptom Log</h2>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="flex items-center gap-2">
+                  <PenTool className="w-5 h-5 text-blue-500" />
+                  <h2 className="text-xl font-semibold">
+                    {editingEntryId ? "Edit log entry" : "Enhanced Symptom Log"}
+                  </h2>
+                </div>
+                {editingEntryId && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditingEntryId(null)
+                      setPainLevel(0)
+                      setStressLevel(0)
+                      setSelectedSymptoms([])
+                      setSelectedTriggers([])
+                      setSelectedRemedies([])
+                      setNotes("")
+                      setMealSize("")
+                      setTimeSinceEating(0)
+                      setSleepQuality(5)
+                      setExerciseLevel(0)
+                      setWeatherCondition("")
+                      setIngestionTime("")
+                    }}
+                    className="text-sm text-gray-600 hover:text-cyan-600"
+                  >
+                    Cancel edit
+                  </button>
+                )}
               </div>
               <p className="text-gray-600 mb-6">
                 Comprehensive tracking with detailed pain scale and contextual factors
@@ -899,7 +1071,7 @@ export default function GastroGuardApp() {
                   className="w-full p-3 bg-gradient-to-r from-blue-500 to-cyan-500 text-white rounded-lg font-semibold hover:shadow-lg transform hover:scale-105 transition-all duration-200 flex items-center justify-center gap-2"
                 >
                   <Save className="w-5 h-5" />
-                  Save Entry
+                  {editingEntryId ? "Update entry" : "Save Entry"}
                 </button>
               </div>
             </div>
@@ -1409,8 +1581,85 @@ export default function GastroGuardApp() {
 
         {currentView === "history" && (
           <div className="bg-white/80 backdrop-blur-sm border border-white/20 shadow-xl rounded-lg p-6">
-            <h2 className="text-xl font-semibold mb-4">History</h2>
-            <p>History view coming soon...</p>
+            <div className="flex items-center gap-2 mb-4">
+              <Calendar className="w-5 h-5 text-cyan-500" />
+              <h2 className="text-xl font-semibold">History</h2>
+            </div>
+            {!user ? (
+              <p className="text-gray-600">Sign in to see your full log history from any device.</p>
+            ) : entries.length === 0 ? (
+              <p className="text-gray-600">No entries yet. Log something from the Log tab.</p>
+            ) : (
+              <>
+                <p className="text-sm text-gray-600 mb-4">
+                  Showing {historyPage * HISTORY_PAGE_SIZE + 1}–
+                  {Math.min((historyPage + 1) * HISTORY_PAGE_SIZE, entries.length)} of {entries.length}
+                </p>
+                <div className="space-y-3">
+                  {entries
+                    .slice(historyPage * HISTORY_PAGE_SIZE, (historyPage + 1) * HISTORY_PAGE_SIZE)
+                    .map((entry) => (
+                      <div key={entry.id} className="p-4 bg-gray-50 rounded-lg border border-gray-100">
+                        <div className="flex justify-between items-start gap-2 mb-2">
+                          <div>
+                            <span className="font-medium text-gray-800">
+                              {entry.date} at {entry.time}
+                            </span>
+                            <div className="flex gap-2 mt-1">
+                              <span className="text-xs bg-red-100 text-red-700 px-2 py-0.5 rounded">
+                                Pain {entry.painLevel}/10
+                              </span>
+                              <span className="text-xs bg-orange-100 text-orange-700 px-2 py-0.5 rounded">
+                                Stress {entry.stressLevel}/10
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex gap-1">
+                            <button
+                              type="button"
+                              onClick={() => beginEditEntry(entry)}
+                              className="p-2 rounded-lg hover:bg-white"
+                              aria-label="Edit"
+                            >
+                              <Pencil className="w-4 h-4 text-cyan-600" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteEntry(entry.id)}
+                              className="p-2 rounded-lg hover:bg-white"
+                              aria-label="Delete"
+                            >
+                              <Trash2 className="w-4 h-4 text-red-500" />
+                            </button>
+                          </div>
+                        </div>
+                        {entry.symptoms.length > 0 && (
+                          <p className="text-sm text-gray-600">Symptoms: {entry.symptoms.join(", ")}</p>
+                        )}
+                        {entry.notes && <p className="text-sm text-gray-500 mt-1">{entry.notes}</p>}
+                      </div>
+                    ))}
+                </div>
+                <div className="flex justify-between mt-6">
+                  <button
+                    type="button"
+                    disabled={historyPage === 0}
+                    onClick={() => setHistoryPage((p) => Math.max(0, p - 1))}
+                    className="px-4 py-2 rounded-lg border border-gray-200 disabled:opacity-40"
+                  >
+                    Previous
+                  </button>
+                  <button
+                    type="button"
+                    disabled={(historyPage + 1) * HISTORY_PAGE_SIZE >= entries.length}
+                    onClick={() => setHistoryPage((p) => p + 1)}
+                    className="px-4 py-2 rounded-lg border border-gray-200 disabled:opacity-40"
+                  >
+                    Next
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -1418,15 +1667,20 @@ export default function GastroGuardApp() {
       <div className="fixed bottom-0 left-0 right-0 bg-white/90 backdrop-blur-sm border-t border-gray-200 px-4 py-2">
         <div className="flex justify-around items-center max-w-md mx-auto">
           {[
-            { id: "dashboard", icon: Home, label: "Dashboard" },
+            { id: "dashboard", icon: Home, label: "Home" },
             { id: "enhanced-log", icon: PenTool, label: "Log" },
-            { id: "simulation", icon: Zap, label: "Simulate" },
-            { id: "analytics", icon: BarChart, label: "Analytics" },
+            { id: "history", icon: Clock, label: "History" },
+            { id: "simulation", icon: Zap, label: "Sim" },
+            { id: "analytics", icon: BarChart, label: "Stats" },
             { id: "profile", icon: Activity, label: "Profile" },
           ].map((tab) => (
             <button
               key={tab.id}
-              onClick={() => setCurrentView(tab.id)}
+              onClick={() => {
+                if (tab.id === "enhanced-log") setEditingEntryId(null)
+                if (tab.id === "history") setHistoryPage(0)
+                setCurrentView(tab.id)
+              }}
               className={`flex flex-col items-center gap-1 p-2 rounded-lg transition-all duration-200 ${
                 currentView === tab.id
                   ? "text-cyan-600 bg-cyan-50"

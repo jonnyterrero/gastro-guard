@@ -20,6 +20,8 @@ export interface LogEntryUI {
   exerciseLevel?: number
   weatherCondition?: string
   ingestionTime?: string
+  /** Preserved when loaded from DB for updates */
+  entryAtIso?: string
 }
 
 /** Convert UI form state to DB insert payload */
@@ -43,7 +45,30 @@ export function toDbPayload(
   const now = new Date()
   const entryDate = now.toISOString().split("T")[0]
   const entryAt = now.toISOString()
+  const fields = buildPayloadFields(form)
+  return {
+    user_id: userId,
+    entry_at: entryAt,
+    entry_date: entryDate,
+    ...fields,
+  }
+}
 
+/** Build insert/update payload from form (shared fields) */
+function buildPayloadFields(form: {
+  painLevel: number
+  stressLevel: number
+  selectedSymptoms: string[]
+  selectedTriggers: string[]
+  selectedRemedies: string[]
+  notes: string
+  mealSize: string
+  timeSinceEating: number
+  sleepQuality: number
+  exerciseLevel: number
+  weatherCondition: string
+  ingestionTime: string
+}) {
   const mealNotes: string[] = []
   if (form.timeSinceEating > 0) mealNotes.push(`${form.timeSinceEating}h since eating`)
   if (form.sleepQuality > 0) mealNotes.push(`Sleep quality: ${form.sleepQuality}/10`)
@@ -52,18 +77,41 @@ export function toDbPayload(
   if (form.ingestionTime) mealNotes.push(`Ingestion: ${form.ingestionTime}`)
 
   return {
-    user_id: userId,
-    entry_at: entryAt,
-    entry_date: entryDate,
     pain_score: form.painLevel,
     stress_score: form.stressLevel,
-    nausea_score: null,
+    nausea_score: null as number | null,
     meal_name: form.mealSize || null,
     meal_notes: mealNotes.length > 0 ? mealNotes.join("; ") : null,
     symptoms: form.selectedSymptoms,
     triggers: form.selectedTriggers,
     remedies: form.selectedRemedies,
     notes: form.notes || null,
+  }
+}
+
+/** Update payload: preserves entry_at / entry_date when editing */
+export function toDbUpdatePayload(
+  form: {
+    painLevel: number
+    stressLevel: number
+    selectedSymptoms: string[]
+    selectedTriggers: string[]
+    selectedRemedies: string[]
+    notes: string
+    mealSize: string
+    timeSinceEating: number
+    sleepQuality: number
+    exerciseLevel: number
+    weatherCondition: string
+    ingestionTime: string
+  },
+  entryAtIso: string,
+  entryDate: string
+) {
+  return {
+    ...buildPayloadFields(form),
+    entry_at: entryAtIso,
+    entry_date: entryDate,
   }
 }
 
@@ -99,5 +147,6 @@ export function fromDbRow(row: {
     remedies: parseArray(row.remedies),
     notes: row.notes ?? "",
     mealSize: row.meal_name ?? undefined,
+    entryAtIso: row.entry_at,
   }
 }
