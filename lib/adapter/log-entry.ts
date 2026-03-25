@@ -22,6 +22,11 @@ export interface LogEntryUI {
   ingestionTime?: string
   /** Preserved when loaded from DB for updates */
   entryAtIso?: string
+  /** When the GI episode occurred (if different from log time) */
+  episodeAtIso?: string
+  mealOccurredAtIso?: string
+  /** Flattened food tag labels from log_entries.food_tags */
+  foodTags?: string[]
 }
 
 /** Convert UI form state to DB insert payload */
@@ -127,6 +132,9 @@ export function fromDbRow(row: {
   remedies: string[] | unknown
   notes: string | null
   meal_name: string | null
+  food_tags?: unknown
+  episode_at?: string | null
+  meal_occurred_at?: string | null
 }): LogEntryUI {
   const entryDate = new Date(row.entry_at)
   const timeStr = entryDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
@@ -134,6 +142,17 @@ export function fromDbRow(row: {
   const parseArray = (val: unknown): string[] => {
     if (Array.isArray(val)) return val.map((v) => (typeof v === "string" ? v : (v as { name?: string })?.name ?? String(v)))
     return []
+  }
+
+  const parseFoodTags = (val: unknown): string[] => {
+    if (!Array.isArray(val)) return []
+    return val.map((v) => {
+      if (typeof v === "string") return v
+      if (v && typeof v === "object" && "tag" in v && typeof (v as { tag: string }).tag === "string") {
+        return (v as { tag: string }).tag
+      }
+      return String(v)
+    })
   }
 
   return {
@@ -148,5 +167,8 @@ export function fromDbRow(row: {
     notes: row.notes ?? "",
     mealSize: row.meal_name ?? undefined,
     entryAtIso: row.entry_at,
+    episodeAtIso: row.episode_at ?? undefined,
+    mealOccurredAtIso: row.meal_occurred_at ?? undefined,
+    foodTags: parseFoodTags(row.food_tags),
   }
 }
