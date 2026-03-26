@@ -102,7 +102,12 @@ export default function RootLayout({
       </head>
       <body className="font-sans antialiased">
         <div className="min-h-screen bg-background">{children}</div>
-        <Toaster position="bottom-center" richColors closeButton />
+        <Toaster
+          position="top-center"
+          richColors
+          closeButton
+          toastOptions={{ duration: 4000 }}
+        />
       </body>
     </html>
   )

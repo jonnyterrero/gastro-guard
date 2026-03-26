@@ -18,6 +18,7 @@ yarn-error.log*
 
 # env files
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -25,3 +26,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Cursor — ignore local/cache by default; shared paths are un-ignored below
+.cursor/*
+!.cursor/plans/
+!.cursor/plans/**
+!.cursor/settings.json
+
+# Local IDE / Supabase CLI cache
+.claude/
+supabase/.temp/

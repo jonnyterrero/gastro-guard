@@ -1,0 +1,14 @@
+{
+  "user_id": "00000000-0000-0000-0000-000000000000",
+  "entry_at": "2026-03-19T14:30:00.000Z",
+  "entry_date": "2026-03-19",
+  "pain_score": 4,
+  "stress_score": 3,
+  "nausea_score": 2,
+  "meal_name": "Lunch - salad and grilled chicken",
+  "meal_notes": "Ate quickly, felt full afterward",
+  "symptoms": ["Bloating", "Heartburn", { "name": "Nausea", "severity": 5, "notes": "Mild, after eating" }],
+  "triggers": ["Large Meal", { "name": "Fatty Food", "notes": "Chicken skin" }],
+  "remedies": ["Antacid", { "name": "Ginger Tea", "helpfulness": 8 }],
+  "notes": "Symptoms started about 30 min after lunch. Took antacid at 3pm."
+}

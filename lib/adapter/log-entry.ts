@@ -1,0 +1,174 @@
+/**
+ * Adapter: UI LogEntry <-> Supabase log_entries
+ */
+
+import type { LogEntryDb } from "@/lib/types/log-entry"
+
+export interface LogEntryUI {
+  id: string
+  date: string
+  time: string
+  painLevel: number
+  stressLevel: number
+  symptoms: string[]
+  triggers: string[]
+  remedies: string[]
+  notes: string
+  mealSize?: string
+  timeSinceEating?: number
+  sleepQuality?: number
+  exerciseLevel?: number
+  weatherCondition?: string
+  ingestionTime?: string
+  /** Preserved when loaded from DB for updates */
+  entryAtIso?: string
+  /** When the GI episode occurred (if different from log time) */
+  episodeAtIso?: string
+  mealOccurredAtIso?: string
+  /** Flattened food tag labels from log_entries.food_tags */
+  foodTags?: string[]
+}
+
+/** Convert UI form state to DB insert payload */
+export function toDbPayload(
+  form: {
+    painLevel: number
+    stressLevel: number
+    selectedSymptoms: string[]
+    selectedTriggers: string[]
+    selectedRemedies: string[]
+    notes: string
+    mealSize: string
+    timeSinceEating: number
+    sleepQuality: number
+    exerciseLevel: number
+    weatherCondition: string
+    ingestionTime: string
+  },
+  userId: string
+): Omit<LogEntryDb, "id" | "created_at" | "updated_at"> {
+  const now = new Date()
+  const entryDate = now.toISOString().split("T")[0]
+  const entryAt = now.toISOString()
+  const fields = buildPayloadFields(form)
+  return {
+    user_id: userId,
+    entry_at: entryAt,
+    entry_date: entryDate,
+    ...fields,
+  }
+}
+
+/** Build insert/update payload from form (shared fields) */
+function buildPayloadFields(form: {
+  painLevel: number
+  stressLevel: number
+  selectedSymptoms: string[]
+  selectedTriggers: string[]
+  selectedRemedies: string[]
+  notes: string
+  mealSize: string
+  timeSinceEating: number
+  sleepQuality: number
+  exerciseLevel: number
+  weatherCondition: string
+  ingestionTime: string
+}) {
+  const mealNotes: string[] = []
+  if (form.timeSinceEating > 0) mealNotes.push(`${form.timeSinceEating}h since eating`)
+  if (form.sleepQuality > 0) mealNotes.push(`Sleep quality: ${form.sleepQuality}/10`)
+  if (form.exerciseLevel > 0) mealNotes.push(`Exercise: ${form.exerciseLevel}/10`)
+  if (form.weatherCondition) mealNotes.push(`Weather: ${form.weatherCondition}`)
+  if (form.ingestionTime) mealNotes.push(`Ingestion: ${form.ingestionTime}`)
+
+  return {
+    pain_score: form.painLevel,
+    stress_score: form.stressLevel,
+    nausea_score: null as number | null,
+    meal_name: form.mealSize || null,
+    meal_notes: mealNotes.length > 0 ? mealNotes.join("; ") : null,
+    symptoms: form.selectedSymptoms,
+    triggers: form.selectedTriggers,
+    remedies: form.selectedRemedies,
+    notes: form.notes || null,
+  }
+}
+
+/** Update payload: preserves entry_at / entry_date when editing */
+export function toDbUpdatePayload(
+  form: {
+    painLevel: number
+    stressLevel: number
+    selectedSymptoms: string[]
+    selectedTriggers: string[]
+    selectedRemedies: string[]
+    notes: string
+    mealSize: string
+    timeSinceEating: number
+    sleepQuality: number
+    exerciseLevel: number
+    weatherCondition: string
+    ingestionTime: string
+  },
+  entryAtIso: string,
+  entryDate: string
+) {
+  return {
+    ...buildPayloadFields(form),
+    entry_at: entryAtIso,
+    entry_date: entryDate,
+  }
+}
+
+/** Convert DB row to UI LogEntry */
+export function fromDbRow(row: {
+  id: string
+  entry_at: string
+  entry_date: string
+  pain_score: number
+  stress_score: number
+  symptoms: string[] | unknown
+  triggers: string[] | unknown
+  remedies: string[] | unknown
+  notes: string | null
+  meal_name: string | null
+  food_tags?: unknown
+  episode_at?: string | null
+  meal_occurred_at?: string | null
+}): LogEntryUI {
+  const entryDate = new Date(row.entry_at)
+  const timeStr = entryDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+
+  const parseArray = (val: unknown): string[] => {
+    if (Array.isArray(val)) return val.map((v) => (typeof v === "string" ? v : (v as { name?: string })?.name ?? String(v)))
+    return []
+  }
+
+  const parseFoodTags = (val: unknown): string[] => {
+    if (!Array.isArray(val)) return []
+    return val.map((v) => {
+      if (typeof v === "string") return v
+      if (v && typeof v === "object" && "tag" in v && typeof (v as { tag: string }).tag === "string") {
+        return (v as { tag: string }).tag
+      }
+      return String(v)
+    })
+  }
+
+  return {
+    id: row.id,
+    date: row.entry_date,
+    time: timeStr,
+    painLevel: row.pain_score,
+    stressLevel: row.stress_score,
+    symptoms: parseArray(row.symptoms),
+    triggers: parseArray(row.triggers),
+    remedies: parseArray(row.remedies),
+    notes: row.notes ?? "",
+    mealSize: row.meal_name ?? undefined,
+    entryAtIso: row.entry_at,
+    episodeAtIso: row.episode_at ?? undefined,
+    mealOccurredAtIso: row.meal_occurred_at ?? undefined,
+    foodTags: parseFoodTags(row.food_tags),
+  }
+}
