@@ -32,3 +32,7 @@ next-env.d.ts
 !.cursor/plans/
 !.cursor/plans/**
 !.cursor/settings.json
+
+# Local IDE / Supabase CLI cache
+.claude/
+supabase/.temp/
