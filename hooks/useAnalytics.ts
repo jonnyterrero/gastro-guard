@@ -8,12 +8,20 @@ import {
   fetchRemedyScores,
   fetchWeeklySummaries,
   fetchRecommendationCache,
+  fetchDailyRollups,
+  fetchLatestRollingSnapshots,
   type TimelineEvent,
   type TriggerScore,
   type RemedyScore,
   type WeeklySummary,
   type RecommendationPayload,
+  type DailyFeatureRollup,
+  type RollingFeatureSnapshot,
 } from "@/lib/services/analytics.service"
+import {
+  getActiveRecommendations,
+  type RecommendationItemRow,
+} from "@/lib/services/recommendations"
 
 export interface AnalyticsState {
   timeline: TimelineEvent[]
@@ -21,6 +29,9 @@ export interface AnalyticsState {
   remedyScores: RemedyScore[]
   weeklySummaries: WeeklySummary[]
   recommendations: RecommendationPayload | null
+  dailyRollups: DailyFeatureRollup[]
+  rollingSnapshots: RollingFeatureSnapshot[]
+  recommendationItems: RecommendationItemRow[]
   loading: boolean
   error: string | null
 }
@@ -32,6 +43,9 @@ export function useAnalytics(user: User | null): AnalyticsState {
     remedyScores: [],
     weeklySummaries: [],
     recommendations: null,
+    dailyRollups: [],
+    rollingSnapshots: [],
+    recommendationItems: [],
     loading: false,
     error: null,
   })
@@ -55,12 +69,28 @@ export function useAnalytics(user: User | null): AnalyticsState {
             fetchRecommendationCache(user.id),
           ])
 
+        let dailyRollups: DailyFeatureRollup[] = []
+        let rollingSnapshots: RollingFeatureSnapshot[] = []
+        let recommendationItems: RecommendationItemRow[] = []
+        try {
+          ;[dailyRollups, rollingSnapshots, recommendationItems] = await Promise.all([
+            fetchDailyRollups(user.id),
+            fetchLatestRollingSnapshots(user.id),
+            getActiveRecommendations(user.id),
+          ])
+        } catch {
+          /* v3 tables / RPCs may not be applied yet */
+        }
+
         setState({
           timeline,
           triggerScores,
           remedyScores,
           weeklySummaries,
           recommendations,
+          dailyRollups,
+          rollingSnapshots,
+          recommendationItems,
           loading: false,
           error: null,
         })

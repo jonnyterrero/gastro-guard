@@ -59,6 +59,7 @@ export function useOfflineSync(user: User | null) {
     let synced = 0
 
     for (const entry of local) {
+      const hours = entry.timeSinceEating
       const payload = {
         user_id: user.id,
         entry_at: entry.entryAtIso ?? `${entry.date}T12:00:00Z`,
@@ -70,6 +71,15 @@ export function useOfflineSync(user: User | null) {
         remedies: entry.remedies,
         notes: entry.notes || null,
         meal_name: entry.mealSize || null,
+        meal_size: entry.mealSize || null,
+        time_since_eating_minutes:
+          hours != null && hours > 0 ? Math.round(hours * 60) : null,
+        sleep_quality: entry.sleepQuality != null && entry.sleepQuality > 0 ? entry.sleepQuality : null,
+        exercise_level:
+          entry.exerciseLevel != null && entry.exerciseLevel > 0 ? entry.exerciseLevel : null,
+        weather_condition: entry.weatherCondition || null,
+        source: "offline_sync",
+        sync_status: "synced",
         meal_notes: [
           entry.timeSinceEating ? `${entry.timeSinceEating}h since eating` : null,
           entry.sleepQuality ? `Sleep: ${entry.sleepQuality}/10` : null,

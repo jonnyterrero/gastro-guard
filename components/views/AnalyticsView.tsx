@@ -1,6 +1,14 @@
 "use client"
 
-import { BarChart2, TrendingDown, TrendingUp, Clock, Calendar, RefreshCw } from "lucide-react"
+import {
+  BarChart2,
+  TrendingDown,
+  TrendingUp,
+  Clock,
+  Calendar,
+  RefreshCw,
+  Sparkles,
+} from "lucide-react"
 import {
   BarChart,
   Bar,
@@ -39,8 +47,21 @@ function Card({
 }
 
 export function AnalyticsView({ user, analytics }: AnalyticsViewProps) {
-  const { timeline, triggerScores, remedyScores, weeklySummaries, recommendations, loading, error } =
-    analytics
+  const {
+    timeline,
+    triggerScores,
+    remedyScores,
+    weeklySummaries,
+    recommendations,
+    dailyRollups,
+    rollingSnapshots,
+    recommendationItems,
+    loading,
+    error,
+  } = analytics
+
+  const roll7 = rollingSnapshots.find((r) => r.window_days === 7)
+  const flareDaysRecent = dailyRollups.filter((d) => d.flare_flag).length
 
   if (!user) {
     return (
@@ -110,6 +131,67 @@ export function AnalyticsView({ user, analytics }: AnalyticsViewProps) {
               {recommendations.risky_hours[0].avg_pain?.toFixed(1)}/10)
             </p>
           )}
+        </Card>
+      )}
+
+      {recommendationItems.length > 0 && (
+        <Card title="Personalized recommendations" icon={Sparkles}>
+          <p className="text-xs text-gray-500 mb-3">
+            Rule-based insights from your daily rollups and trends (v3). Refresh runs after you log.
+          </p>
+          <ul className="space-y-3">
+            {recommendationItems.map((item) => (
+              <li
+                key={item.id}
+                className="border border-gray-100 rounded-lg p-3 bg-gradient-to-br from-violet-50/80 to-white"
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <span className="text-sm font-semibold text-gray-900">{item.title}</span>
+                  {item.confidence != null && (
+                    <span className="text-xs text-gray-500 shrink-0">
+                      {Math.round(item.confidence * 100)}% confidence
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-600 mt-1">{item.summary}</p>
+                <span className="text-[10px] uppercase tracking-wide text-violet-600 mt-2 inline-block">
+                  {item.recommendation_type.replace(/_/g, " ")}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
+      {(roll7 || flareDaysRecent > 0) && (
+        <Card title="Risk and trends snapshot" icon={BarChart2}>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+            <div className="rounded-lg bg-amber-50 p-3 border border-amber-100">
+              <div className="text-xs text-amber-800 font-medium">Flare days (recent window)</div>
+              <div className="text-2xl font-semibold text-amber-900">{flareDaysRecent}</div>
+              <p className="text-[10px] text-amber-700 mt-1">Days flagged in daily rollups (loaded)</p>
+            </div>
+            {roll7 && (
+              <>
+                <div className="rounded-lg bg-slate-50 p-3 border border-slate-100">
+                  <div className="text-xs text-slate-600 font-medium">7d avg pain / stress</div>
+                  <div className="text-lg font-semibold text-slate-900">
+                    {roll7.avg_pain != null ? roll7.avg_pain.toFixed(1) : "—"} /{" "}
+                    {roll7.avg_stress != null ? roll7.avg_stress.toFixed(1) : "—"}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-3 border border-slate-100">
+                  <div className="text-xs text-slate-600 font-medium">7d flare days / spicy correlation</div>
+                  <div className="text-lg font-semibold text-slate-900">
+                    {roll7.flare_days ?? "—"} /{" "}
+                    {roll7.spicy_correlation_score != null
+                      ? roll7.spicy_correlation_score.toFixed(2)
+                      : "—"}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         </Card>
       )}
 
@@ -232,7 +314,9 @@ export function AnalyticsView({ user, analytics }: AnalyticsViewProps) {
       {!loading &&
         triggerScores.length === 0 &&
         remedyScores.length === 0 &&
-        weeklySummaries.length === 0 && (
+        weeklySummaries.length === 0 &&
+        recommendationItems.length === 0 &&
+        dailyRollups.length === 0 && (
           <Card title="No Analytics Yet" icon={Calendar}>
             <p className="text-sm text-gray-500">
               Log at least a few entries to generate your analytics. Analytics

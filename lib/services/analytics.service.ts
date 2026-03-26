@@ -43,6 +43,31 @@ export interface RecommendationPayload {
   recent_entry_count: number
 }
 
+/** v3 daily_feature_rollups row */
+export interface DailyFeatureRollup {
+  feature_date: string
+  log_count: number
+  avg_pain: number | null
+  max_pain: number | null
+  avg_stress: number | null
+  max_stress: number | null
+  symptom_count: number
+  flare_flag: boolean
+  flare_score: number | null
+  spicy_exposure_count: number
+}
+
+/** v3 rolling_feature_snapshots row */
+export interface RollingFeatureSnapshot {
+  snapshot_date: string
+  window_days: number
+  avg_pain: number | null
+  avg_stress: number | null
+  flare_days: number | null
+  spicy_correlation_score: number | null
+  stress_vs_pain_score: number | null
+}
+
 export interface TimelineEvent {
   event_type: string
   occurred_at: string
@@ -79,12 +104,14 @@ export async function refreshUserAnalytics(
  */
 export async function refreshUserRecommendations(
   userId: string,
-  cacheVersion = "v1"
+  cacheVersion = "v1",
+  snapshotDate?: string
 ): Promise<void> {
   const supabase = createClient()
   const { error } = await supabase.rpc("refresh_user_recommendations", {
     p_user_id: userId,
     p_cache_version: cacheVersion,
+    p_snapshot_date: snapshotDate ?? new Date().toISOString().split("T")[0],
   })
   if (error) {
     console.warn("[analytics] refresh_user_recommendations failed:", error.message)
@@ -97,14 +124,30 @@ export async function refreshUserRecommendations(
  */
 export async function triggerFullRefresh(userId: string): Promise<void> {
   const today = new Date()
+  const to = today.toISOString().split("T")[0]
   const from = new Date(today)
   from.setDate(today.getDate() - 30)
-  await refreshUserAnalytics(
-    userId,
-    from.toISOString().split("T")[0],
-    today.toISOString().split("T")[0]
-  )
-  await refreshUserRecommendations(userId)
+  await refreshUserAnalytics(userId, from.toISOString().split("T")[0], to)
+  await refreshUserRecommendations(userId, "v1", to)
+}
+
+/** Snapshot ML-ready features (writes model_features). */
+export async function buildModelFeaturesSnapshot(
+  userId: string,
+  asOfDate: string,
+  windowDays: 7 | 14 | 30 | 60
+): Promise<string | null> {
+  const supabase = createClient()
+  const { data, error } = await supabase.rpc("build_model_features", {
+    p_user_id: userId,
+    p_as_of_date: asOfDate,
+    p_window_days: windowDays,
+  })
+  if (error) {
+    console.warn("[analytics] build_model_features failed:", error.message)
+    return null
+  }
+  return data as string | null
 }
 
 // ── Read functions ────────────────────────────────────────────────────────────
@@ -175,4 +218,48 @@ export async function fetchRecommendationCache(
   if (error) throw error
   if (!data) return null
   return data.payload as RecommendationPayload
+}
+
+export async function fetchDailyRollups(
+  userId: string,
+  limit = 30
+): Promise<DailyFeatureRollup[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from("daily_feature_rollups")
+    .select(
+      "feature_date, log_count, avg_pain, max_pain, avg_stress, max_stress, symptom_count, flare_flag, flare_score, spicy_exposure_count"
+    )
+    .eq("user_id", userId)
+    .order("feature_date", { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return (data ?? []) as DailyFeatureRollup[]
+}
+
+/** Latest snapshot_date rows (all window_days) for the most recent snapshot. */
+export async function fetchLatestRollingSnapshots(
+  userId: string
+): Promise<RollingFeatureSnapshot[]> {
+  const supabase = createClient()
+  const { data: latest, error: e1 } = await supabase
+    .from("rolling_feature_snapshots")
+    .select("snapshot_date")
+    .eq("user_id", userId)
+    .order("snapshot_date", { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (e1) throw e1
+  if (!latest?.snapshot_date) return []
+
+  const { data, error } = await supabase
+    .from("rolling_feature_snapshots")
+    .select(
+      "snapshot_date, window_days, avg_pain, avg_stress, flare_days, spicy_correlation_score, stress_vs_pain_score"
+    )
+    .eq("user_id", userId)
+    .eq("snapshot_date", latest.snapshot_date)
+    .order("window_days", { ascending: true })
+  if (error) throw error
+  return (data ?? []) as RollingFeatureSnapshot[]
 }

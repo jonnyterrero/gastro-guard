@@ -98,3 +98,18 @@ In Supabase Dashboard → Table Editor, check:
 grant select on public.v_user_timeline to anon;
 grant select on public.v_user_timeline to authenticated;
 ```
+
+---
+
+## v3 feature layer (migration `20260325150000_gastroguard_v3_schema_and_rpcs.sql`)
+
+Additive tables: `daily_feature_rollups`, `rolling_feature_snapshots`, `model_features`, `prediction_outputs`, `recommendation_items` (row-level recs), global `food_tags` + `meal_event_food_tags`. Extends `log_entries` with optional scalar fields (`sleep_quality`, `meal_size`, `source`, `sync_status`, `*_labels` mirrors).
+
+RPCs (all require JWT matching `p_user_id`):
+
+- `refresh_daily_feature_rollups(p_user_id, p_start_date, p_end_date)`
+- `refresh_rolling_feature_snapshots(p_user_id, p_snapshot_date)`
+- `refresh_recommendation_items_v3(p_user_id, p_snapshot_date)` — called from `refresh_user_recommendations` after legacy payload upsert
+- `build_model_features(p_user_id, p_as_of_date, p_window_days)`
+
+`refresh_user_analytics` now ends by calling daily + rolling rollups for the same window; `refresh_user_recommendations(uuid, text, date)` replaces the old 2-arg overload and rebuilds both `recommendation_cache` and `recommendation_items`.
