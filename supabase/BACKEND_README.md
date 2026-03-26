@@ -113,3 +113,5 @@ RPCs (all require JWT matching `p_user_id`):
 - `build_model_features(p_user_id, p_as_of_date, p_window_days)`
 
 `refresh_user_analytics` now ends by calling daily + rolling rollups for the same window; `refresh_user_recommendations(uuid, text, date)` replaces the old 2-arg overload and rebuilds both `recommendation_cache` and `recommendation_items`.
+
+**Manual SQL extras:** [supabase_sql_editor_extras_resolve_api_key_and_verify.sql](supabase_sql_editor_extras_resolve_api_key_and_verify.sql) — idempotent `resolve_api_key` + commented verification queries if you apply SQL piecemeal in the Dashboard.

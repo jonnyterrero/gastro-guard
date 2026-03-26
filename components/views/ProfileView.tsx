@@ -349,6 +349,22 @@ export function ProfileView({
               Authorization: Bearer YOUR_API_KEY
             </code>
           </p>
+          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded p-2 mt-3">
+            Server env required:{" "}
+            <code className="text-[10px]">SUPABASE_SERVICE_ROLE_KEY</code> in{" "}
+            <code className="text-[10px]">.env.local</code> (restart{" "}
+            <code className="text-[10px]">npm run dev</code> after changes).
+          </p>
+          {integrations.length > 0 && (
+            <div className="mt-3">
+              <p className="text-xs font-semibold text-gray-700 mb-1">
+                Quick test (copy, replace YOUR_GG_KEY)
+              </p>
+              <pre className="text-[10px] font-mono bg-white p-2 rounded border border-gray-200 overflow-x-auto whitespace-pre-wrap break-all">
+                {`curl -s "${typeof window !== "undefined" ? window.location.origin : ""}/api/entries" \\\n  -H "Authorization: Bearer YOUR_GG_KEY"`}
+              </pre>
+            </div>
+          )}
         </div>
       </div>
     </div>

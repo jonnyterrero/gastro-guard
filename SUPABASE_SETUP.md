@@ -83,3 +83,15 @@ curl http://localhost:3000/api/entries \
 ```
 
 You should get JSON with `entries` (or an error if the key is missing or invalid).
+
+---
+
+## 6. Manual SQL apply order (SQL Editor)
+
+If you do not use the Supabase CLI, apply migrations **in order** for a fresh project:
+
+1. Core hybrid + analytics as bundled in [supabase/supabase_sql_editor_p0_through_p3.sql](supabase/supabase_sql_editor_p0_through_p3.sql) (or your equivalent migration chain).
+2. [supabase/migrations/20260325140000_resolve_api_key_rpc.sql](supabase/migrations/20260325140000_resolve_api_key_rpc.sql) — `resolve_api_key` for `/api/*`.
+3. [supabase/migrations/20260325150000_gastroguard_v3_schema_and_rpcs.sql](supabase/migrations/20260325150000_gastroguard_v3_schema_and_rpcs.sql) — v3 feature tables + RPCs.
+
+**Extras only** (e.g. rebuild `resolve_api_key` + commented verification queries): [supabase/supabase_sql_editor_extras_resolve_api_key_and_verify.sql](supabase/supabase_sql_editor_extras_resolve_api_key_and_verify.sql).
