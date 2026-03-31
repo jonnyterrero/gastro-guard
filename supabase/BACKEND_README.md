@@ -101,6 +101,17 @@ grant select on public.v_user_timeline to authenticated;
 
 ---
 
+## Deployment verification scripts
+
+Run in the Supabase SQL Editor after migrations:
+
+1. [verify_deployment.sql](verify_deployment.sql) — read-only: required public functions, `log_entries` triggers, `v_user_timeline` / `v_profile_health_legacy`, and RLS enabled on key tables. Each row should show `ok = true`.
+2. [verify_log_entry_sync.sql](verify_log_entry_sync.sql) — inserts one `log_entries` row inside a transaction, asserts `log_days` and normalized event rows exist, then **rolls back** (requires at least one `auth.users` row).
+
+**Profile lists:** the app keeps `profiles.conditions` and `profiles.medications` JSONB as the saved source of truth and mirrors them to `profile_conditions` and `medications` on each successful save. On load, if those JSON arrays are empty but normalized rows exist, the client backfills from the normalized tables.
+
+---
+
 ## v3 feature layer (migration `20260325150000_gastroguard_v3_schema_and_rpcs.sql`)
 
 Additive tables: `daily_feature_rollups`, `rolling_feature_snapshots`, `model_features`, `prediction_outputs`, `recommendation_items` (row-level recs), global `food_tags` + `meal_event_food_tags`. Extends `log_entries` with optional scalar fields (`sleep_quality`, `meal_size`, `source`, `sync_status`, `*_labels` mirrors).
@@ -115,3 +126,5 @@ RPCs (all require JWT matching `p_user_id`):
 `refresh_user_analytics` now ends by calling daily + rolling rollups for the same window; `refresh_user_recommendations(uuid, text, date)` replaces the old 2-arg overload and rebuilds both `recommendation_cache` and `recommendation_items`.
 
 **Manual SQL extras:** [supabase_sql_editor_extras_resolve_api_key_and_verify.sql](supabase_sql_editor_extras_resolve_api_key_and_verify.sql) — idempotent `resolve_api_key` + commented verification queries if you apply SQL piecemeal in the Dashboard.
+
+**Insight engine (migration `20260330120000_insight_engine_layer.sql`):** granular `refresh_trigger_scores` / `refresh_food_scores` / `refresh_time_patterns` / `refresh_remedy_scores`, `refresh_daily_feature_rollup`, `refresh_rolling_feature_snapshot`, `refresh_insight_model_features`, `refresh_insight_predictions`, `refresh_insight_recommendation_items`, and orchestration `refresh_user_insight_engine(p_user_id, p_start, p_end)` (JWT must match user). Run metadata merges into `recommendation_cache` with `cache_version = 'insight-engine-meta'`.

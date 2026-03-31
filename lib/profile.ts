@@ -90,5 +90,35 @@ export async function fetchProfileAndIntegrations(supabase: SupabaseClient, user
   const integrations = Array.isArray(row.integrations)
     ? (row.integrations as Integration[])
     : []
-  return { profile: rowToUserProfile(row), integrations }
+
+  const base = rowToUserProfile(row)
+
+  const [{ data: condRows, error: condErr }, { data: medRows, error: medErr }] =
+    await Promise.all([
+      supabase
+        .from("profile_conditions")
+        .select("condition_name")
+        .eq("user_id", userId)
+        .eq("is_active", true),
+      supabase
+        .from("medications")
+        .select("medication_name")
+        .eq("user_id", userId)
+        .eq("is_active", true),
+    ])
+
+  let conditions = base.conditions
+  if (conditions.length === 0 && !condErr && condRows?.length) {
+    conditions = condRows.map((r) => r.condition_name).filter((x): x is string => typeof x === "string")
+  }
+
+  let medications = base.medications
+  if (medications.length === 0 && !medErr && medRows?.length) {
+    medications = medRows.map((r) => r.medication_name).filter((x): x is string => typeof x === "string")
+  }
+
+  return {
+    profile: { ...base, conditions, medications },
+    integrations,
+  }
 }

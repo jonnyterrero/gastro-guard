@@ -10,6 +10,7 @@ import {
   type UserProfile,
   type Integration,
 } from "@/lib/profile"
+import { syncNormalizedProfileLists } from "@/lib/profileNormalizedSync"
 
 const EMPTY_PROFILE: UserProfile = {
   name: "",
@@ -115,6 +116,15 @@ export function useProfile(user: User | null) {
           toast.error("Could not sync profile: " + error.message)
           setSaving(false)
           return false
+        }
+
+        const { error: normErr } = await syncNormalizedProfileLists(
+          supabase,
+          user.id,
+          updated
+        )
+        if (normErr) {
+          console.warn("[useProfile] normalized lists sync failed:", normErr.message)
         }
       }
 
