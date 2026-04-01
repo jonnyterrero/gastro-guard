@@ -1,6 +1,6 @@
 /**
  * Analytics service — wraps all Supabase analytics table reads
- * and the refresh_user_analytics / refresh_user_recommendations RPCs.
+ * and the refresh_user_analytics / refresh_user_insight_engine / refresh_user_recommendations RPCs.
  *
  * All functions use the browser Supabase client (client components / hooks).
  * For server-side use, swap createClient() with the server variant.
@@ -99,8 +99,38 @@ export async function refreshUserAnalytics(
 }
 
 /**
+ * Insight engine: predictions, insight model_features, recommendation_items (source=insight_engine),
+ * and insight_engine_runs audit. Same date window as analytics refresh.
+ * Returns JSON includes `ok`; false means the run row was logged with status=error (HTTP may still be 200).
+ */
+export async function refreshUserInsightEngine(
+  userId: string,
+  from: string,
+  to: string
+): Promise<void> {
+  const supabase = createClient()
+  const { data, error } = await supabase.rpc("refresh_user_insight_engine", {
+    p_user_id: userId,
+    p_start: from,
+    p_end: to,
+  })
+  if (error) {
+    console.warn("[analytics] refresh_user_insight_engine failed:", error.message)
+    return
+  }
+  const payload = data as { ok?: boolean; error?: string; failed_step?: string } | null
+  if (payload && payload.ok === false) {
+    console.warn(
+      "[analytics] refresh_user_insight_engine reported failure:",
+      payload.error ?? "unknown",
+      payload.failed_step ? `(step: ${payload.failed_step})` : ""
+    )
+  }
+}
+
+/**
  * Rebuild the recommendation cache for a user.
- * Should be called after refreshUserAnalytics completes.
+ * Should be called after refreshUserAnalytics and refreshUserInsightEngine complete.
  */
 export async function refreshUserRecommendations(
   userId: string,
@@ -119,7 +149,7 @@ export async function refreshUserRecommendations(
 }
 
 /**
- * Convenience: refresh analytics for the trailing 30 days then update recs.
+ * Convenience: refresh analytics + insight engine + recommendations for the trailing 30 days.
  * Call after saving / updating / deleting a log entry.
  */
 export async function triggerFullRefresh(userId: string): Promise<void> {
@@ -127,7 +157,9 @@ export async function triggerFullRefresh(userId: string): Promise<void> {
   const to = today.toISOString().split("T")[0]
   const from = new Date(today)
   from.setDate(today.getDate() - 30)
-  await refreshUserAnalytics(userId, from.toISOString().split("T")[0], to)
+  const fromStr = from.toISOString().split("T")[0]
+  await refreshUserAnalytics(userId, fromStr, to)
+  await refreshUserInsightEngine(userId, fromStr, to)
   await refreshUserRecommendations(userId, "v1", to)
 }
 

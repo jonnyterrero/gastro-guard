@@ -105,8 +105,9 @@ grant select on public.v_user_timeline to authenticated;
 
 Run in the Supabase SQL Editor after migrations:
 
-1. [verify_deployment.sql](verify_deployment.sql) — read-only: required public functions, `log_entries` triggers, `v_user_timeline` / `v_profile_health_legacy`, and RLS enabled on key tables. Each row should show `ok = true`.
+1. [verify_deployment.sql](verify_deployment.sql) — read-only: required public functions, `log_entries` triggers, `v_user_timeline` / `v_profile_health_legacy`, table `insight_engine_runs`, and RLS enabled on key tables. Each row should show `ok = true`.
 2. [verify_log_entry_sync.sql](verify_log_entry_sync.sql) — inserts one `log_entries` row inside a transaction, asserts `log_days` and normalized event rows exist, then **rolls back** (requires at least one `auth.users` row).
+3. [verify_insight_pipeline_e2e.sql](verify_insight_pipeline_e2e.sql) — commented layer queries + JWT/RPC notes for the full insight stack.
 
 **Profile lists:** the app keeps `profiles.conditions` and `profiles.medications` JSONB as the saved source of truth and mirrors them to `profile_conditions` and `medications` on each successful save. On load, if those JSON arrays are empty but normalized rows exist, the client backfills from the normalized tables.
 
@@ -128,3 +129,26 @@ RPCs (all require JWT matching `p_user_id`):
 **Manual SQL extras:** [supabase_sql_editor_extras_resolve_api_key_and_verify.sql](supabase_sql_editor_extras_resolve_api_key_and_verify.sql) — idempotent `resolve_api_key` + commented verification queries if you apply SQL piecemeal in the Dashboard.
 
 **Insight engine (migration `20260330120000_insight_engine_layer.sql`):** granular `refresh_trigger_scores` / `refresh_food_scores` / `refresh_time_patterns` / `refresh_remedy_scores`, `refresh_daily_feature_rollup`, `refresh_rolling_feature_snapshot`, `refresh_insight_model_features`, `refresh_insight_predictions`, `refresh_insight_recommendation_items`, and orchestration `refresh_user_insight_engine(p_user_id, p_start, p_end)` (JWT must match user). Run metadata merges into `recommendation_cache` with `cache_version = 'insight-engine-meta'`.
+
+---
+
+## Two analytics refresh paths (when to call what)
+
+The app needs **both** paths for a full stack: weekly summaries + legacy rec cache, **and** insight predictions + insight-scoped rows.
+
+| Path | RPCs | What gets populated |
+|------|------|---------------------|
+| **App / legacy** | `refresh_user_analytics` → `refresh_user_recommendations` | `weekly_summaries`, `analytics_*`, `daily_feature_rollups`, `rolling_feature_snapshots`, `recommendation_cache` (`v1`), `recommendation_items` from `refresh_recommendation_items_v3` (not `source = 'insight_engine'`) |
+| **Insight engine** | `refresh_user_insight_engine` (same date window as analytics) | Re-runs granular `refresh_*` analytics, then **`model_features`** with feature set **`insight-engine-v2`**, **`prediction_outputs`** (`model_version = 'rules-insight-v1'`), **`recommendation_items`** where **`source = 'insight_engine'`**, and merges `recommendation_cache` **`insight-engine-meta`** (per-step timings). |
+
+**Important:**
+
+- **`build_model_features`** (optional RPC) writes a **different** `model_features` row (`feature_set_version = 'v3-rules-1'`) than **`refresh_insight_model_features`** (`insight-engine-v2`). When validating the ML layer, filter by `feature_set_version` or confirm which RPC ran.
+- **`prediction_outputs`** are written only by **`refresh_insight_predictions`**, which runs inside **`refresh_user_insight_engine`**. If you only call `refresh_user_analytics`, predictions stay empty even when rollups look fine.
+- **`insight_engine_runs`** (see migration `20260404120000_insight_engine_runs.sql`) stores one row per orchestration run (`status`, `error`, `steps`) so silent failures are visible in the database. On pipeline failure, `refresh_user_insight_engine` returns JSON `{ "ok": false, "error": "...", "failed_step": "..." }` (HTTP 200) so the audit row commits; check `ok`, not only RPC `error`.
+
+**Client behavior:** `triggerFullRefresh` in the app calls `refresh_user_analytics`, then `refresh_user_insight_engine`, then `refresh_user_recommendations` for the trailing 30 days (after each log save / update / delete).
+
+**Scheduling:** Post-save refresh is the default (above). For a **daily backfill** without user activity, enable Supabase **pg_cron** (or an Edge Function) to invoke the same RPCs with a service role or a dedicated user—only if you need catch-up jobs; not required for normal use.
+
+**Manual E2E:** [verify_insight_pipeline_e2e.sql](verify_insight_pipeline_e2e.sql) — layer checks and JWT/session notes (RPCs require `auth.uid() = p_user_id`).
