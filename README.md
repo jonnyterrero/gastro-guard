@@ -87,10 +87,13 @@ python gastroguard_enhancedv3.py
 #### **Option 2: Progressive Web App (Next.js)**
 ```bash
 cd frontend
+cp .env.example .env.local   # Windows: copy .env.example .env.local — then edit with Supabase keys
 npm install
 npm run dev
 # Production: npm run build && npm start
 ```
+
+Supabase CLI (migrations): use **`backend/supabase`** as the project directory (`cd backend/supabase` or `supabase --workdir backend/supabase`). Details: [MONOREPO.md](MONOREPO.md), [SUPABASE_SETUP.md](SUPABASE_SETUP.md).
 
 ---
 

@@ -22,8 +22,24 @@ This repository is organized as a **Next.js + Supabase** monorepo (no Turborepo/
 └── .gitignore
 ```
 
-- **Run the app:** `cd frontend && npm install && npm run dev`
-- **Apply DB migrations:** use Supabase CLI from `backend/supabase` (see [SUPABASE_SETUP.md](SUPABASE_SETUP.md))
-- **Deploy (Vercel):** set the project **Root Directory** to `frontend` and use the same env vars as [frontend/.env.example](frontend/.env.example)
+### Local dev (Next.js)
+
+1. `cd frontend`
+2. Copy [frontend/.env.example](frontend/.env.example) → `frontend/.env.local` and fill in values from the Supabase dashboard.
+3. `npm install` (first time) then `npm run dev`.
+
+### Supabase CLI and SQL workflows
+
+Use **`backend/supabase`** as the Supabase project directory: run the CLI from that folder so migrations and link state resolve correctly.
+
+```bash
+cd backend/supabase
+# e.g. supabase link, supabase db push, supabase migration new ...
+```
+
+Alternatively, from the repo root: `supabase --workdir backend/supabase <command>`.
+
+See [SUPABASE_SETUP.md](SUPABASE_SETUP.md) for env vars and manual SQL apply order.
+- **Deploy (Vercel):** set the project **Root Directory** to `frontend` and use the same env vars as [frontend/.env.example](frontend/.env.example).
 
 Route Handlers (`app/api/*`) live inside **frontend** because they are part of the Next.js deployment unit; **backend** is the authoritative SQL/migration tree for Postgres.

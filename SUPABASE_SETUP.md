@@ -1,5 +1,12 @@
 # Supabase Auth "Failed to Fetch" Fix
 
+## Monorepo paths
+
+- **Next.js app:** work in `frontend/` — copy `frontend/.env.example` to `frontend/.env.local`, then `npm run dev` (see section 1).
+- **Supabase CLI** (`link`, `db push`, migrations): use **`backend/supabase`** as the project folder — `cd backend/supabase` before running commands, or `supabase --workdir backend/supabase` from the repo root.
+
+---
+
 ## 1. Create `.env.local` with your Supabase credentials
 
 1. Go to [Supabase Dashboard](https://supabase.com/dashboard) → your **Gastro-guard back end** project

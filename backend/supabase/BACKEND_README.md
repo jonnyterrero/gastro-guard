@@ -12,9 +12,10 @@ alter table public.profiles add column if not exists integrations jsonb default 
 
 ## Applying the Migration
 
-Run the migration against your Supabase project:
+From the **`backend/supabase`** directory (the Supabase CLI project path in this repo), run:
 
 ```bash
+cd backend/supabase   # or: supabase --workdir backend/supabase db push (from repo root)
 supabase db push
 ```
 
