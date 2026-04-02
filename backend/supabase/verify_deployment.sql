@@ -72,6 +72,15 @@ views_ok as (
         and v.table_name = 'v_profile_health_legacy'
     ) as v_profile_health_legacy
 ),
+tables_ok as (
+  select
+    exists (
+      select 1
+      from information_schema.tables t
+      where t.table_schema = 'public'
+        and t.table_name = 'insight_engine_runs'
+    ) as insight_engine_runs
+),
 rls as (
   select c.relname as table_name, c.relrowsecurity as rls_enabled
   from pg_class c
@@ -90,6 +99,8 @@ union all
 select 'view', 'v_user_timeline', v_user_timeline from views_ok
 union all
 select 'view', 'v_profile_health_legacy', v_profile_health_legacy from views_ok
+union all
+select 'table', 'insight_engine_runs', insight_engine_runs from tables_ok
 union all
 select 'rls', r.table_name || ' (rowsecurity)', r.rls_enabled
 from rls r

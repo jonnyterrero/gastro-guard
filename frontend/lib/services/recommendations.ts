@@ -42,7 +42,7 @@ export async function getActiveRecommendations(
 
 /**
  * Rebuilds legacy cache + v3 recommendation_items.
- * Prefer calling via triggerFullRefresh after analytics, or pass snapshotDate aligned with refresh window end.
+ * Prefer calling via triggerFullRefresh after analytics + insight engine, or pass snapshotDate aligned with refresh window end.
  */
 export async function refreshRecommendations(
   userId: string,
