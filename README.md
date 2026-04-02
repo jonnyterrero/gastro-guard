@@ -61,6 +61,12 @@ GastroGuard Enhanced is a revolutionary digital health assistant designed to hel
 
 ---
 
+## Monorepo layout
+
+The **web app** (Next.js UI and `app/api` route handlers) is in **`frontend/`**. **Postgres migrations and SQL** are in **`backend/supabase/`**. Older **Python/desktop experiments** are in **`legacy/`**. See [MONOREPO.md](MONOREPO.md) for structure and commands.
+
+---
+
 ## 🚀 **Quick Start**
 
 ### **Prerequisites**
@@ -71,30 +77,19 @@ GastroGuard Enhanced is a revolutionary digital health assistant designed to hel
 
 ### **Installation Options**
 
-#### **Option 1: Desktop Application (Python)**
+#### **Option 1: Desktop Application (Python, legacy)**
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/gastroguard-enhanced.git
-cd gastroguard-enhanced
-
-# Install Python dependencies
-pip install -r requirements_enhanced.txt
-
-# Run the desktop application
-python gastroguard_enhanced_v3.py
+cd legacy
+pip install -r requirements.txt
+python gastroguard_enhancedv3.py
 ```
 
 #### **Option 2: Progressive Web App (Next.js)**
 ```bash
-# Install Node.js dependencies
+cd frontend
 npm install
-
-# Run development server
 npm run dev
-
-# Build for production
-npm run build
-npm start
+# Production: npm run build && npm start
 ```
 
 ---

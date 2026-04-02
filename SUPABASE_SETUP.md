@@ -7,7 +7,7 @@
    - **Project URL** (e.g. `https://xxxx.supabase.co`)
    - **anon public** key
    - **service_role** key (secret) — required for `/api/*` routes; see [section 5](#5-rest-api-integrations-api-and-service-role-key) below
-3. Create `.env.local` in the project root (you can start from `.env.example`):
+3. Create `frontend/.env.local` (copy from `frontend/.env.example`):
 
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://xxxx.supabase.co
@@ -15,7 +15,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 ```
 
-4. **Restart the dev server** (`Ctrl+C` then `npm run dev`)
+4. **Restart the dev server** from `frontend` (`Ctrl+C` then `npm run dev`)
 
 ---
 
@@ -55,14 +55,14 @@ If it shows `undefined`, the env file is missing or the server wasn’t restarte
 
 The routes `/api/entries`, `/api/profile`, and `/api/analytics` authenticate **external** callers with an integration API key (`Authorization: Bearer gg_...`). The server resolves that key via the Postgres function `resolve_api_key()` and uses the **service role** client to run queries (RLS bypass where the route needs it).
 
-1. Apply the migration that defines `resolve_api_key` if you have not already (see `supabase/migrations/20260325140000_resolve_api_key_rpc.sql`). Running it in the SQL Editor may show **no rows** — that is normal for DDL (`CREATE FUNCTION`, `GRANT`, etc.).
+1. Apply the migration that defines `resolve_api_key` if you have not already (see `backend/supabase/migrations/20260325140000_resolve_api_key_rpc.sql`). Running it in the SQL Editor may show **no rows** — that is normal for DDL (`CREATE FUNCTION`, `GRANT`, etc.).
 2. In `.env.local`, set:
 
    ```
    SUPABASE_SERVICE_ROLE_KEY=your_service_role_key_here
    ```
 
-   Get the value from **Supabase Dashboard → Project Settings → API → service_role (secret)**. Copy `.env.example` to `.env.local` if you are starting fresh.
+   Get the value from **Supabase Dashboard → Project Settings → API → service_role (secret)**. Copy `frontend/.env.example` to `frontend/.env.local` if you are starting fresh.
 
 3. **Restart the dev server** (`Ctrl+C`, then `npm run dev`) so Next.js loads the new variable.
 
@@ -90,8 +90,8 @@ You should get JSON with `entries` (or an error if the key is missing or invalid
 
 If you do not use the Supabase CLI, apply migrations **in order** for a fresh project:
 
-1. Core hybrid + analytics as bundled in [supabase/supabase_sql_editor_p0_through_p3.sql](supabase/supabase_sql_editor_p0_through_p3.sql) (or your equivalent migration chain).
-2. [supabase/migrations/20260325140000_resolve_api_key_rpc.sql](supabase/migrations/20260325140000_resolve_api_key_rpc.sql) — `resolve_api_key` for `/api/*`.
-3. [supabase/migrations/20260325150000_gastroguard_v3_schema_and_rpcs.sql](supabase/migrations/20260325150000_gastroguard_v3_schema_and_rpcs.sql) — v3 feature tables + RPCs.
+1. Core hybrid + analytics as bundled in [backend/supabase/supabase_sql_editor_p0_through_p3.sql](backend/supabase/supabase_sql_editor_p0_through_p3.sql) (or your equivalent migration chain).
+2. [backend/supabase/migrations/20260325140000_resolve_api_key_rpc.sql](backend/supabase/migrations/20260325140000_resolve_api_key_rpc.sql) — `resolve_api_key` for `/api/*`.
+3. [backend/supabase/migrations/20260325150000_gastroguard_v3_schema_and_rpcs.sql](backend/supabase/migrations/20260325150000_gastroguard_v3_schema_and_rpcs.sql) — v3 feature tables + RPCs.
 
-**Extras only** (e.g. rebuild `resolve_api_key` + commented verification queries): [supabase/supabase_sql_editor_extras_resolve_api_key_and_verify.sql](supabase/supabase_sql_editor_extras_resolve_api_key_and_verify.sql).
+**Extras only** (e.g. rebuild `resolve_api_key` + commented verification queries): [backend/supabase/supabase_sql_editor_extras_resolve_api_key_and_verify.sql](backend/supabase/supabase_sql_editor_extras_resolve_api_key_and_verify.sql).

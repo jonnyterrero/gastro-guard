@@ -26,46 +26,46 @@ Legend: **Complete** = usable end-to-end in app. **Partial** = works but limited
 
 | Feature | What it does | Where | Status |
 |--------|----------------|------|--------|
-| Email/password sign-up | Creates user; may require email confirm depending on Supabase project settings | [`app/auth/page.tsx`](../app/auth/page.tsx) | **Complete** (depends on Supabase config) |
-| Email/password sign-in | Session via Supabase | [`app/auth/page.tsx`](../app/auth/page.tsx) | **Complete** |
-| OAuth callback | Exchanges `code` for session | [`app/auth/callback/route.ts`](../app/auth/callback/route.ts) | **Complete** |
-| Session refresh | Cookies refreshed on navigation | [`middleware.ts`](../middleware.ts), [`lib/supabase/middleware.ts`](../lib/supabase/middleware.ts) | **Complete** |
+| Email/password sign-up | Creates user; may require email confirm depending on Supabase project settings | [`app/auth/page.tsx`](../frontend/app/auth/page.tsx) | **Complete** (depends on Supabase config) |
+| Email/password sign-in | Session via Supabase | [`app/auth/page.tsx`](../frontend/app/auth/page.tsx) | **Complete** |
+| OAuth callback | Exchanges `code` for session | [`app/auth/callback/route.ts`](../frontend/app/auth/callback/route.ts) | **Complete** |
+| Session refresh | Cookies refreshed on navigation | [`middleware.ts`](../frontend/middleware.ts), [`lib/supabase/middleware.ts`](../frontend/lib/supabase/middleware.ts) | **Complete** |
 | Route guarding | None—no redirect to `/auth` for protected routes | — | **By design / gap:** app is usable logged out |
 
 ### Profile / account
 
 | Feature | What it does | Where | Status |
 |--------|----------------|------|--------|
-| Profile bootstrap | New auth user gets `profiles` row (`handle_new_user`) | SQL in [`supabase/gastroguard_production_schema_v2.sql`](../supabase/gastroguard_production_schema_v2.sql) | **Complete** (DB) |
-| Load profile + integrations | Fetches `profiles`; merges with localStorage | [`app/page.tsx`](../app/page.tsx), [`lib/profile.ts`](../lib/profile.ts) | **Complete** |
-| Save profile | Upserts `profiles` when logged in; always updates localStorage | [`app/page.tsx`](../app/page.tsx) | **Partial** — **only Name and Age have form fields**; `UserProfile` also carries conditions, medications, allergies, etc., but there are **no inputs** for those in JSX (only `setUserProfile` for name/age **confirmed**). Data can still arrive from localStorage merge or future edits. |
-| Sign out | `supabase.auth.signOut()` | [`app/page.tsx`](../app/page.tsx) | **Complete** |
+| Profile bootstrap | New auth user gets `profiles` row (`handle_new_user`) | SQL in [`supabase/gastroguard_production_schema_v2.sql`](../backend/supabase/gastroguard_production_schema_v2.sql) | **Complete** (DB) |
+| Load profile + integrations | Fetches `profiles`; merges with localStorage | [`app/page.tsx`](../frontend/app/page.tsx), [`lib/profile.ts`](../frontend/lib/profile.ts) | **Complete** |
+| Save profile | Upserts `profiles` when logged in; always updates localStorage | [`app/page.tsx`](../frontend/app/page.tsx) | **Partial** — **only Name and Age have form fields**; `UserProfile` also carries conditions, medications, allergies, etc., but there are **no inputs** for those in JSX (only `setUserProfile` for name/age **confirmed**). Data can still arrive from localStorage merge or future edits. |
+| Sign out | `supabase.auth.signOut()` | [`app/page.tsx`](../frontend/app/page.tsx) | **Complete** |
 
 ### Symptom and health logging
 
 | Feature | What it does | Where | Status |
 |--------|----------------|------|--------|
-| Enhanced log | Pain/stress sliders, multi-select symptoms, triggers, remedies, notes, meal context fields | [`app/page.tsx`](../app/page.tsx) | **Complete** |
-| Save entry (logged in) | Insert/update `log_entries` via adapter | [`lib/adapter/log-entry.ts`](../lib/adapter/log-entry.ts) | **Complete** |
-| Save entry (logged out) | Append to state + `localStorage` `gastroguard-entries` | [`app/page.tsx`](../app/page.tsx) | **Complete** |
-| Edit / delete entry | Update/delete by `id` + `user_id` when logged in | [`app/page.tsx`](../app/page.tsx) | **Complete** |
-| History list | Paginated list of entries | [`app/page.tsx`](../app/page.tsx) `currentView === "history"` | **Complete** |
-| Dashboard “today” stats | Derived from in-memory `entries` | [`app/page.tsx`](../app/page.tsx) | **Complete** |
+| Enhanced log | Pain/stress sliders, multi-select symptoms, triggers, remedies, notes, meal context fields | [`app/page.tsx`](../frontend/app/page.tsx) | **Complete** |
+| Save entry (logged in) | Insert/update `log_entries` via adapter | [`lib/adapter/log-entry.ts`](../frontend/lib/adapter/log-entry.ts) | **Complete** |
+| Save entry (logged out) | Append to state + `localStorage` `gastroguard-entries` | [`app/page.tsx`](../frontend/app/page.tsx) | **Complete** |
+| Edit / delete entry | Update/delete by `id` + `user_id` when logged in | [`app/page.tsx`](../frontend/app/page.tsx) | **Complete** |
+| History list | Paginated list of entries | [`app/page.tsx`](../frontend/app/page.tsx) `currentView === "history"` | **Complete** |
+| Dashboard “today” stats | Derived from in-memory `entries` | [`app/page.tsx`](../frontend/app/page.tsx) | **Complete** |
 
 ### Triggers / remedies / meals
 
 | Feature | What it does | Where | Status |
 |--------|----------------|------|--------|
-| Fixed symptom/trigger/remedy picklists | Hardcoded string arrays | [`app/page.tsx`](../app/page.tsx) | **Complete** (not DB-driven) |
-| Meal name + derived `meal_notes` | Optional fields folded into `meal_notes` text (sleep, exercise, weather, etc.) | [`lib/adapter/log-entry.ts`](../lib/adapter/log-entry.ts) | **Complete** |
-| Food tags / rich JSONB | Types support `food_tags`, `episode_at`, `meal_occurred_at`; adapter exposes `fromDbRow` foodTags | [`lib/types/log-entry.ts`](../lib/types/log-entry.ts), adapter | **Partial** — DB + types support extended shape; **[`app/page.tsx`](../app/page.tsx) has no references to `food_tags`, `episode_at`, or `meal_occurred_at`** (verified), so the enhanced log UI does not capture those fields. |
+| Fixed symptom/trigger/remedy picklists | Hardcoded string arrays | [`app/page.tsx`](../frontend/app/page.tsx) | **Complete** (not DB-driven) |
+| Meal name + derived `meal_notes` | Optional fields folded into `meal_notes` text (sleep, exercise, weather, etc.) | [`lib/adapter/log-entry.ts`](../frontend/lib/adapter/log-entry.ts) | **Complete** |
+| Food tags / rich JSONB | Types support `food_tags`, `episode_at`, `meal_occurred_at`; adapter exposes `fromDbRow` foodTags | [`lib/types/log-entry.ts`](../frontend/lib/types/log-entry.ts), adapter | **Partial** — DB + types support extended shape; **[`app/page.tsx`](../frontend/app/page.tsx) has no references to `food_tags`, `episode_at`, or `meal_occurred_at`** (verified), so the enhanced log UI does not capture those fields. |
 | DB normalization | Triggers expand `log_entries` → `meal_events`, `symptom_events`, etc. | SQL triggers | **Complete** (server-side) |
 
 ### Analytics / timeline
 
 | Feature | What it does | Where | Status |
 |--------|----------------|------|--------|
-| Event timeline (Stats) | Loads last 50 rows from `v_user_timeline` | `AnalyticsView` in [`app/page.tsx`](../app/page.tsx) | **Complete** when authenticated |
+| Event timeline (Stats) | Loads last 50 rows from `v_user_timeline` | `AnalyticsView` in [`app/page.tsx`](../frontend/app/page.tsx) | **Complete** when authenticated |
 | Batch analytics RPCs | `refresh_user_analytics`, `refresh_user_recommendations` populate cache tables | SQL | **Prepared only** — **no** `.rpc()` calls in app TS/TSX (verified) |
 | Charts package | `recharts` in dependencies | [`package.json`](../package.json) | **Unused** in main feature path (simulator uses custom SVG) |
 
@@ -73,17 +73,17 @@ Legend: **Complete** = usable end-to-end in app. **Partial** = works but limited
 
 | Feature | What it does | Where | Status |
 |--------|----------------|------|--------|
-| Integration records | Client-generated `gg_…` keys, permissions labels; stored in `profiles.integrations` JSONB | [`app/page.tsx`](../app/page.tsx), [`lib/profile.ts`](../lib/profile.ts) | **Complete** (persistence) |
-| **REST API** advertised in UI | Docs block lists `GET /api/entries`, etc. | [`app/page.tsx`](../app/page.tsx) | **Placeholder** — **no** [`app/api/`](../app/) routes in repo (verified) |
+| Integration records | Client-generated `gg_…` keys, permissions labels; stored in `profiles.integrations` JSONB | [`app/page.tsx`](../frontend/app/page.tsx), [`lib/profile.ts`](../frontend/lib/profile.ts) | **Complete** (persistence) |
+| **REST API** advertised in UI | Docs block lists `GET /api/entries`, etc. | [`app/api/*`](../frontend/app/api/) | **Implemented** — API key auth for entries/profile/analytics; session auth for log-session |
 
 ### Offline / PWA behavior
 
 | Feature | What it does | Where | Status |
 |--------|----------------|------|--------|
-| localStorage keys | `gastroguard-entries`, `gastroguard-profile`, `gastroguard-integrations` | [`app/page.tsx`](../app/page.tsx) | **Complete** |
-| Manifest | Icons, theme, shortcuts | [`public/manifest.json`](../public/manifest.json) | **Complete** |
-| Service worker | Registered on load | [`app/layout.tsx`](../app/layout.tsx), [`public/sw.js`](../public/sw.js) | **Complete** (registration) |
-| Shortcut URLs | `/?action=log`, `/?action=analytics` | [`public/manifest.json`](../public/manifest.json) | **Partial** — **no** `useSearchParams` / handler in [`app/page.tsx`](../app/page.tsx) (verified) so shortcuts may not open the right tab |
+| localStorage keys | `gastroguard-entries`, `gastroguard-profile`, `gastroguard-integrations` | [`app/page.tsx`](../frontend/app/page.tsx) | **Complete** |
+| Manifest | Icons, theme, shortcuts | [`public/manifest.json`](../frontend/public/manifest.json) | **Complete** |
+| Service worker | Registered on load | [`app/layout.tsx`](../frontend/app/layout.tsx), [`public/sw.js`](../frontend/public/sw.js) | **Complete** (registration) |
+| Shortcut URLs | `/?action=log`, `/?action=analytics` | [`public/manifest.json`](../frontend/public/manifest.json) | **Partial** — **no** `useSearchParams` / handler in [`app/page.tsx`](../frontend/app/page.tsx) (verified) so shortcuts may not open the right tab |
 
 ### Inferred / hidden features
 
@@ -101,8 +101,8 @@ Legend: **Complete** = usable end-to-end in app. **Partial** = works but limited
 **Frontend**
 
 - **Framework:** Next.js 14 App Router, React 18.
-- **Primary UI:** Single **client component** [`app/page.tsx`](../app/page.tsx) (~1700+ lines) owns all views via `currentView` string state.
-- **Auth UI:** [`app/auth/page.tsx`](../app/auth/page.tsx).
+- **Primary UI:** Single **client component** [`app/page.tsx`](../frontend/app/page.tsx) (~1700+ lines) owns all views via `currentView` string state.
+- **Auth UI:** [`app/auth/page.tsx`](../frontend/app/auth/page.tsx).
 - **Styling:** Tailwind + Radix + Lucide icons; gradient “glass” aesthetic.
 
 **Backend (application)**
@@ -127,26 +127,26 @@ Legend: **Complete** = usable end-to-end in app. **Partial** = works but limited
 **Auth**
 
 - Browser: `createBrowserClient` + env (`NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`).
-- Server: cookie adapter in [`lib/supabase/server.ts`](../lib/supabase/server.ts).
+- Server: cookie adapter in [`lib/supabase/server.ts`](../frontend/lib/supabase/server.ts).
 
 **Adapters / mappers**
 
-- [`lib/adapter/log-entry.ts`](../lib/adapter/log-entry.ts): form ↔ `log_entries`.
-- [`lib/profile.ts`](../lib/profile.ts): `profiles` ↔ `UserProfile` / integrations.
+- [`lib/adapter/log-entry.ts`](../frontend/lib/adapter/log-entry.ts): form ↔ `log_entries`.
+- [`lib/profile.ts`](../frontend/lib/profile.ts): `profiles` ↔ `UserProfile` / integrations.
 
 ---
 
 ## 4. Current Data Model
 
-### `UserProfile` ([`lib/profile.ts`](../lib/profile.ts))
+### `UserProfile` ([`lib/profile.ts`](../frontend/lib/profile.ts))
 
 - Fields: `name`, `age`, `height`, `weight`, `gender`, `conditions[]`, `medications[]`, `allergies[]`, `dietaryRestrictions[]`, `triggers[]`, `effectiveRemedies[]`.
 - **Mismatch:** v2 schema stores **conditions/medications** in **`profile_conditions`** / **`medications`** tables, not JSONB columns on `profiles`. Client still uses **`profiles` row only** and arrays in memory; **no client code** reads/writes normalized condition/medication tables (confirmed in system spec).
 
-### `LogEntry` (local interface in [`app/page.tsx`](../app/page.tsx))
+### `LogEntry` (local interface in [`app/page.tsx`](../frontend/app/page.tsx))
 
 - UI-facing shape: `id`, `date`, `time`, `painLevel`, `stressLevel`, `symptoms[]`, `triggers[]`, `remedies[]`, `notes`, optional meal/sleep/exercise fields.
-- **Mismatch vs DB:** [`LogEntryDb`](../lib/types/log-entry.ts) supports structured JSONB elements and `food_tags`; local `LogEntry` is **simpler** (mostly string arrays for symptoms/triggers/remedies).
+- **Mismatch vs DB:** [`LogEntryDb`](../frontend/lib/types/log-entry.ts) supports structured JSONB elements and `food_tags`; local `LogEntry` is **simpler** (mostly string arrays for symptoms/triggers/remedies).
 
 ### `profiles` table
 
@@ -191,7 +191,7 @@ Legend: **Complete** = usable end-to-end in app. **Partial** = works but limited
 
 ### Profile load / save
 
-- **Load:** Supabase + `localStorage` merge rules in [`app/page.tsx`](../app/page.tsx) (e.g. push local name to server if empty).
+- **Load:** Supabase + `localStorage` merge rules in [`app/page.tsx`](../frontend/app/page.tsx) (e.g. push local name to server if empty).
 - **Save:** `upsert` `profiles` with `userProfileToUpsert` + integrations array.
 
 ### Log create / update / delete
@@ -231,7 +231,7 @@ Legend: **Complete** = usable end-to-end in app. **Partial** = works but limited
 
 ## 7. Current Technical Debt and Weak Points
 
-1. **Monolithic [`app/page.tsx`](../app/page.tsx):** All views, state, and business logic in one file—hard to test, review, and code-split.
+1. **Monolithic [`app/page.tsx`](../frontend/app/page.tsx):** All views, state, and business logic in one file—hard to test, review, and code-split.
 2. **Coupling:** UI state (`currentPainLevel`) drives “recommendations” that are unrelated to stored log entries.
 3. **Missing abstractions:** No domain hooks (`useLogEntries`, `useProfile`), no API layer, no feature folders.
 4. **Schema mismatch:** `UserProfile.conditions` / `medications` vs `profile_conditions` / `medications` tables — **dual models** without migration path in the client.
@@ -256,7 +256,7 @@ Legend: **Complete** = usable end-to-end in app. **Partial** = works but limited
 
 ## 9. Recommended Next Development Priorities
 
-1. **Split [`app/page.tsx`](../app/page.tsx)** into routes or feature components (`dashboard`, `log`, `history`, `stats`, `profile`, `simulator`) with shared hooks—highest leverage for maintainability.
+1. **Split [`app/page.tsx`](../frontend/app/page.tsx)** into routes or feature components (`dashboard`, `log`, `history`, `stats`, `profile`, `simulator`) with shared hooks—highest leverage for maintainability.
 2. **Either implement or remove** fake `/api/*` documentation; if real, add authenticated Edge/Route handlers or Supabase RLS-safe patterns.
 3. **Wire analytics:** Call `refresh_user_analytics` after log save (debounced) or via cron; **Stats** tab could show `weekly_summaries` or cached scores—not only raw timeline.
 4. **Profile completeness:** Add UI for conditions, allergies, medications **or** sync `profile_conditions` / `medications` tables and drop duplicate arrays from mental model.

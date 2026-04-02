@@ -1,9 +1,10 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { Heart } from "lucide-react"
+import type { SupabaseClient } from "@supabase/supabase-js"
 
 export default function AuthPage() {
   const [isSignUp, setIsSignUp] = useState(false)
@@ -11,11 +12,15 @@ export default function AuthPage() {
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null)
+  const [supabase, setSupabase] = useState<SupabaseClient | null>(null)
 
-  const supabase = createClient()
+  useEffect(() => {
+    setSupabase(createClient())
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (!supabase) return
     setLoading(true)
     setMessage(null)
 
@@ -116,10 +121,10 @@ export default function AuthPage() {
 
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || !supabase}
               className="w-full py-3 px-4 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 text-white font-semibold hover:from-cyan-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
             >
-              {loading ? "Please wait..." : isSignUp ? "Sign up" : "Sign in"}
+              {loading ? "Please wait..." : !supabase ? "Loading…" : isSignUp ? "Sign up" : "Sign in"}
             </button>
           </form>
 

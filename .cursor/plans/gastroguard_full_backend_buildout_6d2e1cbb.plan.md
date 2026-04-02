@@ -34,7 +34,7 @@ Sync triggers and RLS are in place. Minor schema differences (profiles structure
 - `handle_new_user()` inserts (id, email) on auth.users insert
 - RLS: SELECT/UPDATE where `(select auth.uid()) = id`
 
-**Current:** [supabase/migrations/20260319000000_gastroguard_hybrid_backend.sql](supabase/migrations/20260319000000_gastroguard_hybrid_backend.sql) has profiles with user_id FK and extended columns. Consider adding `email` and `display_name` if aligning to spec.
+**Current:** [backend/supabase/migrations/20260319000000_gastroguard_hybrid_backend.sql](../../backend/supabase/migrations/20260319000000_gastroguard_hybrid_backend.sql) has profiles with user_id FK and extended columns. Consider adding `email` and `display_name` if aligning to spec.
 
 ---
 

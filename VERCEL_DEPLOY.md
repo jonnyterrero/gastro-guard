@@ -22,7 +22,11 @@ After you have a production URL (e.g. `https://gastro-guard.vercel.app`):
 
 ## Build
 
+The Next.js app lives in **`frontend/`**. In Vercel: **Settings** → **General** → **Root Directory** → `frontend`.
+
 ```bash
+cd frontend
+npm install
 npm run build
 ```
 

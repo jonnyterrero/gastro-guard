@@ -53,25 +53,16 @@ python gastroguard_enhanced_v3.py
 
 ### **PWA Application Setup**
 ```bash
-# Navigate to PWA folder
-cd 02-Progressive-Web-App
-
-# Install Node.js dependencies
+cd frontend
 npm install
-
-# Run development server
 npm run dev
-
-# Build for production
-npm run build
+# Production: npm run build
 ```
 
 ### **Run Tests**
 ```bash
-# Navigate to testing folder
-cd 04-Testing
-
-# Run all tests
+# Legacy Python scripts (see legacy/); module names may need aligning before they run.
+cd legacy
 python test_enhanced_features.py
 python test_user_profile.py
 python test_optional_remedy.py
